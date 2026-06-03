@@ -3,7 +3,8 @@
 @tailwind utilities;
 
 :root {
-  --bg: #020617;      /* Deep Slate */
+  --bg: #020617;
+  /* Deep Slate */
   --card-bg: rgba(255, 255, 255, 0.05);
   --accent: #aa3bff;
   --text: #f8fafc;
