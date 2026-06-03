@@ -24,13 +24,13 @@ export default function App() {
 
 // Small sub-components for states
 const LoadingScreen = () => (
-  <div className="h-screen w-screen flex items-center justify-center bg-slate-950">
+  <div className="min-h-screen w-full flex items-center justify-center bg-slate-950">
     <div className="text-white tracking-[0.4em] font-light animate-pulse text-xl">SYNCING...</div>
   </div>
 );
 
 const ErrorScreen = ({ message }) => (
-  <div className="h-screen w-screen flex items-center justify-center bg-slate-950 p-10 text-center">
+  <div className="min-h-screen w-full flex items-center justify-center bg-slate-950 p-10 text-center">
     <div className="max-w-sm text-slate-500 text-sm leading-relaxed uppercase tracking-widest">{message}</div>
   </div>
 );

@@ -14,13 +14,10 @@ body {
   background-color: var(--bg);
   color: var(--text);
   font-family: system-ui, -apple-system, sans-serif;
-  display: flex;
-  justify-content: center;
   min-height: 100vh;
 }
 
 #root {
   width: 100%;
-  max-width: 500px; /* Keeps the dashboard focused in the center */
-  padding: 2rem;
+  min-height: 100vh;
 }
