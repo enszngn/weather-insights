@@ -40,3 +40,22 @@ To get a local copy up and running, follow these simple steps:
 ```bash
    git clone [https://github.com/enszngn/weather-app-v1.git](https://github.com/enszngn/weather-app-v1.git)
    cd weather-app-v1
+```
+2. **Install the dependencies:**
+```bash
+   npm install
+```
+3. **Start the local development server:**
+```bash
+   npm run dev
+```
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
+
+## ✍️ Contact
+
+Enes Zengin - [GitHub Profile](https://github.com/enszngn)
