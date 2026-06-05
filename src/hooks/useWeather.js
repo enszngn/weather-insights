@@ -19,8 +19,6 @@ export default function useWeather() {
       const data = await response.json();
 
       let locationName = data.timezone.split('/')[1]?.replace('_', ' ') || data.timezone;
-      let city = '';
-      let country = '';
 
       try {
         const geoUrl = `https://api.bigdatacloud.net/data/reverse-geocode-client?latitude=${lat}&longitude=${lon}&localityLanguage=en`;
@@ -28,8 +26,6 @@ export default function useWeather() {
         if (geoResponse.ok) {
           const geoData = await geoResponse.json();
           locationName = geoData.city || geoData.locality || geoData.principalSubdivision || locationName;
-          city = geoData.city || geoData.locality || '';
-          country = geoData.countryName || '';
         }
       } catch (geoErr) {
         console.warn('Geocoding fallback failed, using timezone name:', geoErr);
