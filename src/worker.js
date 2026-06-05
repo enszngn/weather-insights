@@ -1,4 +1,4 @@
-import { onRequestPost } from "../functions/api.js";
+import { onRequestPost } from "./api.js";
 
 export default {
   async fetch(request, env, ctx) {
