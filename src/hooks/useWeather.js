@@ -52,7 +52,7 @@ export default function useWeather() {
   };
 
   useEffect(() => {
-    // Sayfa her açıldığında/ziyaret edildiğinde backend'e log gönderiyoruz (cache'den bağımsız)
+    // Log visit to backend on every page load (bypassing localStorage cache)
     fetch('/api', { method: 'POST' }).catch((apiErr) => {
       console.error('Failed to log visit to backend:', apiErr);
     });

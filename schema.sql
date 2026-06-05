@@ -3,7 +3,7 @@ DROP TABLE if EXISTS visits;
 CREATE TABLE visits (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     city_name TEXT,
-    ip TEXT NOT NULL, /* ip gelmezse veri islemedim, simdilik kalsin soracam */
+    ip TEXT NOT NULL, /* client IP address (required field) */
     city TEXT,
     country TEXT,
     lat REAL,
