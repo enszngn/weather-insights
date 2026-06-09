@@ -151,18 +151,18 @@ export default function WeatherWindow({ lat, lon, title, date = 'current', initi
               </h1>
             </div>
 
-            {/* ─ Insight Cards — at the 4/6 mark (~62vh) ─ */}
-            <div className="absolute top-[62vh] inset-x-4 max-h-[14svh] overflow-y-auto custom-scrollbar space-y-[clamp(0.35rem,0.9svh,0.6rem)]">
+            {/* ─ Insight Cards — at the 4/6 mark (~55vh) ─ */}
+            <div className="absolute top-[55vh] inset-x-4 max-h-[12svh] overflow-y-auto custom-scrollbar space-y-[clamp(0.35rem,0.9svh,0.6rem)]">
               {insights.map((text, i) => (
                 <InsightCard key={i} text={text} />
               ))}
             </div>
 
-            {/* ─ Metric Cards — at the 5/6 mark (~80vh) ─ */}
-            <div className="absolute top-[80vh] inset-x-4">
+            {/* ─ Metric Cards — at the 5/6 mark (~70vh) ─ */}
+            <div className="absolute top-[70vh] inset-x-4">
               <div className="grid grid-cols-2 gap-[clamp(0.5rem,1.5svh,1rem)] opacity-85">
                 <MetricCard Icon={Droplets} label="Humidity" value={weather.humidity} unit="%" />
-                <MetricCard Icon={Wind}     label="Wind"     value={weather.windSpeed} unit="km/h" />
+                <MetricCard Icon={Wind} label="Wind" value={weather.windSpeed} unit="km/h" />
               </div>
             </div>
           </>
