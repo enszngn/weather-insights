@@ -1,48 +1,69 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import WeatherWindow from './WeatherWindow';
 import CitySearch from './CitySearch';
 import { getSystemTheme } from '../utils/weatherLogic';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 
+// ── Module-level constants ────────────────────────────────────────────────────
+
+const TOTAL_DAYS          = 8;
+const ROTATION_PER_CARD   = 360 / TOTAL_DAYS; // 45° per card face
+const ROTATION_SENSITIVITY = 0.15;            // px → degrees
+const THRESHOLD_DEGREES    = 12;              // min drag to commit a slide
+const WHEEL_THROTTLE_MS    = 800;             // ms between wheel-triggered slides
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+/** Returns today + next N days as YYYY-MM-DD strings. */
+function buildDays(count) {
+  return Array.from({ length: count }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() + i);
+    return d.toISOString().split('T')[0];
+  });
+}
+
+/** Builds a normalised weather object from an Open-Meteo forecast API response. */
+function normaliseMeteoData(data, dateStr, isToday, fallbackTitle) {
+  const currentHour = new Date().getHours();
+  return {
+    temp:        isToday && data.current ? data.current.temperature_2m          : data.hourly.temperature_2m[currentHour],
+    humidity:    isToday && data.current ? data.current.relative_humidity_2m     : (data.hourly.relative_humidity_2m?.[currentHour] ?? 50),
+    windSpeed:   isToday && data.current ? data.current.wind_speed_10m           : (data.hourly.wind_speed_10m?.[currentHour] ?? 10),
+    uvIndex:     data.daily.uv_index_max[0],
+    weatherCode: isToday && data.current ? data.current.weather_code            : data.hourly.weather_code[currentHour],
+    hourly:      data.hourly,
+    locationName: fallbackTitle || data.timezone.split('/').pop().replace(/_/g, ' '),
+    lat:         data.latitude,
+    lon:         data.longitude,
+  };
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
 export default function CylinderTimeline({ initialWeather }) {
-  // ── Coordinates and City Title state ──────────────────────────────────────────
+  // ── Location & active day state ───────────────────────────────────────────────
   const [coords, setCoords] = useState({
-    lat: initialWeather?.lat ?? 41.0082,
-    lon: initialWeather?.lon ?? 28.9784,
+    lat:   initialWeather?.lat          ?? 41.0082,
+    lon:   initialWeather?.lon          ?? 28.9784,
     title: initialWeather?.locationName ?? 'Istanbul',
   });
 
   const [activeIndex, setActiveIndex] = useState(0);
 
-  // Generate date strings for Today + 7 days (8 days total)
-  const days = Array.from({ length: 8 }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    const year = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  });
+  // ── Day strings — memoized so array identity is stable across renders ─────────
+  const days = useMemo(() => buildDays(TOTAL_DAYS), []);
 
-  // ── Prefetch & Lazy Load state management ─────────────────────────────────────
-  // Keyed by dateStr: { loading, error, data }
+  // ── Per-day weather cache — keyed by dateStr ──────────────────────────────────
   const [loadedData, setLoadedData] = useState(() => {
-    const initialData = {};
-    if (initialWeather) {
-      const todayStr = days[0];
-      initialData[todayStr] = {
-        loading: false,
-        error: null,
-        data: initialWeather,
-      };
-    }
-    return initialData;
+    if (!initialWeather) return {};
+    return { [days[0]]: { loading: false, error: null, data: initialWeather } };
   });
 
   const activeFetches = useRef(new Set());
 
-  // Function to fetch weather for a specific day
-  const fetchDataForDate = async (dateStr, lat, lon) => {
+  // ── Fetch weather for a specific day ─────────────────────────────────────────
+  const fetchDataForDate = useCallback(async (dateStr, lat, lon) => {
     const fetchKey = `${dateStr}-${lat}-${lon}`;
     if (activeFetches.current.has(fetchKey)) return;
     activeFetches.current.add(fetchKey);
@@ -53,186 +74,148 @@ export default function CylinderTimeline({ initialWeather }) {
     }));
 
     try {
-      const url = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=uv_index_max&timezone=auto&start_date=${dateStr}&end_date=${dateStr}`;
+      const url = [
+        'https://api.open-meteo.com/v1/forecast',
+        `?latitude=${lat}&longitude=${lon}`,
+        '&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code',
+        '&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code',
+        '&daily=uv_index_max&timezone=auto',
+        `&start_date=${dateStr}&end_date=${dateStr}`,
+      ].join('');
+
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const data = await res.json();
 
-      const now = new Date();
-      const currentHour = now.getHours();
       const isToday = dateStr === days[0];
 
       setLoadedData((prev) => {
-        // Discard if coordinates have changed since the fetch started
-        if (coords.lat !== lat || coords.lon !== lon) return prev;
-
+        // Discard stale responses if the user switched city mid-flight.
+        if (prev[dateStr]?.loading === false && prev[dateStr]?.data) return prev;
         return {
           ...prev,
           [dateStr]: {
             loading: false,
-            error: null,
-            data: {
-              temp: isToday && data.current ? data.current.temperature_2m : data.hourly.temperature_2m[currentHour],
-              humidity: isToday && data.current ? data.current.relative_humidity_2m : (data.hourly.relative_humidity_2m?.[currentHour] ?? 50),
-              windSpeed: isToday && data.current ? data.current.wind_speed_10m : (data.hourly.wind_speed_10m?.[currentHour] ?? 10),
-              uvIndex: data.daily.uv_index_max[0],
-              weatherCode: isToday && data.current ? data.current.weather_code : data.hourly.weather_code[currentHour],
-              hourly: data.hourly,
-              locationName: coords.title || data.timezone.split('/').pop().replace(/_/g, ' '),
-              lat,
-              lon,
-            },
+            error:   null,
+            data:    normaliseMeteoData(data, dateStr, isToday, coords.title),
           },
         };
       });
     } catch (err) {
       console.error(`Fetch failed for date ${dateStr}:`, err);
-      setLoadedData((prev) => {
-        if (coords.lat !== lat || coords.lon !== lon) return prev;
-        return {
-          ...prev,
-          [dateStr]: {
-            loading: false,
-            error: 'Failed to load weather data',
-            data: null,
-          },
-        };
-      });
+      setLoadedData((prev) => ({
+        ...prev,
+        [dateStr]: { loading: false, error: 'Failed to load weather data', data: null },
+      }));
     } finally {
       activeFetches.current.delete(fetchKey);
     }
-  };
+  }, [days, coords.title]);
 
-  // Prefetch active index, immediate neighbors, and +2/-2 buffer cards on index/coordinates change
+  // ── Prefetch active + ±2 neighbour days on index/coord change ────────────────
   useEffect(() => {
     const neighbors = [
       activeIndex,
-      (activeIndex - 1 + 8) % 8,
-      (activeIndex + 1) % 8,
-      (activeIndex - 2 + 8) % 8,
-      (activeIndex + 2) % 8,
+      (activeIndex - 1 + TOTAL_DAYS) % TOTAL_DAYS,
+      (activeIndex + 1) % TOTAL_DAYS,
+      (activeIndex - 2 + TOTAL_DAYS) % TOTAL_DAYS,
+      (activeIndex + 2) % TOTAL_DAYS,
     ];
 
     neighbors.forEach((idx) => {
       const dateStr = days[idx];
-      // Fetch if not already loaded or loading
       if (!loadedData[dateStr] || loadedData[dateStr].error) {
         fetchDataForDate(dateStr, coords.lat, coords.lon);
       }
     });
-  }, [activeIndex, coords]);
+  }, [activeIndex, coords, days, fetchDataForDate, loadedData]);
 
-  // ── Drag / Swipe handler state ────────────────────────────────────────────────
-  const [dragOffset, setDragOffset] = useState(0);
-  const startX = useRef(0);
-  const isDragging = useRef(false);
+  // ── Drag / Swipe state ────────────────────────────────────────────────────────
+  const [dragOffset, setDragOffset]   = useState(0);
+  const startX       = useRef(0);
+  const isDragging   = useRef(false);
   const lastWheelTime = useRef(0);
 
-  const handleTouchStart = (e) => {
-    startX.current = e.touches[0].clientX;
+  /**
+   * Commits the current dragOffset to an index change (or resets if below
+   * threshold). Shared by both mouse and touch end handlers.
+   */
+  const commitDrag = useCallback((offset) => {
+    if (offset > THRESHOLD_DEGREES) {
+      setActiveIndex((prev) => (prev - 1 + TOTAL_DAYS) % TOTAL_DAYS);
+    } else if (offset < -THRESHOLD_DEGREES) {
+      setActiveIndex((prev) => (prev + 1) % TOTAL_DAYS);
+    }
+    setDragOffset(0);
+  }, []);
+
+  // ── Touch handlers ────────────────────────────────────────────────────────────
+  const handleTouchStart = useCallback((e) => {
+    startX.current     = e.touches[0].clientX;
     isDragging.current = true;
-  };
+  }, []);
 
-  const handleTouchMove = (e) => {
+  const handleTouchMove = useCallback((e) => {
     if (!isDragging.current) return;
-    const currentX = e.touches[0].clientX;
-    const diffX = currentX - startX.current;
-    
-    // Convert swipe pixels to rotation degrees
-    const rotationSensitivity = 0.15;
-    setDragOffset(diffX * rotationSensitivity);
-  };
+    setDragOffset((e.touches[0].clientX - startX.current) * ROTATION_SENSITIVITY);
+  }, []);
 
-  const handleTouchEnd = () => {
+  const handleTouchEnd = useCallback(() => {
     if (!isDragging.current) return;
     isDragging.current = false;
+    commitDrag(dragOffset);
+  }, [commitDrag, dragOffset]);
 
-    const thresholdDegrees = 12;
-    if (dragOffset > thresholdDegrees) {
-      // Swiped right → show previous day
-      setActiveIndex((prev) => (prev - 1 + 8) % 8);
-    } else if (dragOffset < -thresholdDegrees) {
-      // Swiped left → show next day
-      setActiveIndex((prev) => (prev + 1) % 8);
-    }
-
-    setDragOffset(0);
-  };
-
-  // Desktop Mouse Dragging Handlers
-  const handleMouseDown = (e) => {
-    // Prevent dragging when clicking buttons, inputs, links, or lists
+  // ── Mouse handlers ────────────────────────────────────────────────────────────
+  const handleMouseDown = useCallback((e) => {
     if (e.target.closest('input, button, a, select, option, ul, li')) return;
-    
-    startX.current = e.clientX;
-    isDragging.current = true;
+    startX.current                = e.clientX;
+    isDragging.current            = true;
     document.body.style.userSelect = 'none';
-  };
+  }, []);
 
-  const handleMouseMove = (e) => {
+  const handleMouseMove = useCallback((e) => {
     if (!isDragging.current) return;
-    const currentX = e.clientX;
-    const diffX = currentX - startX.current;
-    
-    const rotationSensitivity = 0.15;
-    setDragOffset(diffX * rotationSensitivity);
-  };
+    setDragOffset((e.clientX - startX.current) * ROTATION_SENSITIVITY);
+  }, []);
 
-  const handleMouseUp = () => {
+  const handleMouseUp = useCallback(() => {
     if (!isDragging.current) return;
-    isDragging.current = false;
+    isDragging.current             = false;
     document.body.style.userSelect = '';
+    commitDrag(dragOffset);
+  }, [commitDrag, dragOffset]);
 
-    const thresholdDegrees = 12;
-    if (dragOffset > thresholdDegrees) {
-      setActiveIndex((prev) => (prev - 1 + 8) % 8);
-    } else if (dragOffset < -thresholdDegrees) {
-      setActiveIndex((prev) => (prev + 1) % 8);
-    }
+  const handleMouseLeave = useCallback(() => {
+    if (isDragging.current) handleMouseUp();
+  }, [handleMouseUp]);
 
-    setDragOffset(0);
-  };
-
-  const handleMouseLeave = () => {
-    if (isDragging.current) {
-      handleMouseUp();
-    }
-  };
-
-  // Scroll Wheel Navigation (with overflow scroll protection)
-  const handleWheel = (e) => {
+  // ── Scroll Wheel Navigation ───────────────────────────────────────────────────
+  const handleWheel = useCallback((e) => {
     const now = Date.now();
-    // Throttle scroll events (800ms spacing between transitions)
-    if (now - lastWheelTime.current < 800) return;
-    
-    // Ignore wheel events inside scrollable hourly forecast or insights lists
+    if (now - lastWheelTime.current < WHEEL_THROTTLE_MS) return;
     if (e.target.closest('.overflow-x-auto, .overflow-y-auto, .custom-scrollbar')) return;
 
     if (Math.abs(e.deltaY) > 20 || Math.abs(e.deltaX) > 20) {
       lastWheelTime.current = now;
-      if (e.deltaY > 0 || e.deltaX > 0) {
-        setActiveIndex((prev) => (prev + 1) % 8);
-      } else {
-        setActiveIndex((prev) => (prev - 1 + 8) % 8);
-      }
+      setActiveIndex((prev) =>
+        e.deltaY > 0 || e.deltaX > 0
+          ? (prev + 1) % TOTAL_DAYS
+          : (prev - 1 + TOTAL_DAYS) % TOTAL_DAYS
+      );
     }
-  };
+  }, []);
 
-  // ── City selection callback ──────────────────────────────────────────────────
-  const handleSelectCity = (newCity) => {
-    setCoords({
-      lat: newCity.lat,
-      lon: newCity.lon,
-      title: newCity.name,
-    });
-    setLoadedData({}); // clear old city's cache
-    setActiveIndex(0); // reset view to Today
-  };
+  // ── City selection ────────────────────────────────────────────────────────────
+  const handleSelectCity = useCallback((newCity) => {
+    setCoords({ lat: newCity.lat, lon: newCity.lon, title: newCity.name });
+    setLoadedData({});   // clear old city's cache
+    setActiveIndex(0);   // reset to Today
+  }, []);
 
-  // ── Dynamic page background theme ─────────────────────────────────────────────
-  const activeDateStr = days[activeIndex];
-  const activeWeather = loadedData[activeDateStr]?.data;
-  const activeTheme = activeWeather
+  // ── Dynamic page background ───────────────────────────────────────────────────
+  const activeWeather = loadedData[days[activeIndex]]?.data;
+  const activeTheme   = activeWeather
     ? getSystemTheme(activeWeather.weatherCode)
     : 'from-slate-800 to-slate-950';
 
@@ -252,16 +235,18 @@ export default function CylinderTimeline({ initialWeather }) {
       <div className="w-full flex flex-col items-center gap-4 z-30 select-none">
         <CitySearch onSelectCity={handleSelectCity} />
 
-        {/* Horizontal Navigation indicators */}
+        {/* Day selector tabs */}
         <div className="flex gap-2 justify-center max-w-full px-4 overflow-x-auto no-scrollbar">
           {days.map((dayStr, idx) => {
-            const isActive = idx === activeIndex;
-            const dateObj = new Date(dayStr + 'T00:00:00');
-            const dayName = idx === 0 ? 'TODAY' : dateObj.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
-            
+            const isActive  = idx === activeIndex;
+            const dateObj   = new Date(dayStr + 'T00:00:00');
+            const dayName   = idx === 0
+              ? 'TODAY'
+              : dateObj.toLocaleDateString('en-US', { weekday: 'short' }).toUpperCase();
+
             return (
               <button
-                key={idx}
+                key={dayStr}
                 onClick={() => setActiveIndex(idx)}
                 className={`px-3 py-1.5 text-[9px] tracking-widest font-light transition-all border ${
                   isActive
@@ -278,30 +263,29 @@ export default function CylinderTimeline({ initialWeather }) {
 
       {/* ─ 3D Cylinder Container ─ */}
       <div className="relative flex-1 w-full flex items-center justify-center perspective-1200 overflow-hidden select-none z-10">
-        
+
         {/* Carousel Wheel */}
         <div
           className="preserve-3d w-full h-[80vh] flex items-center justify-center transition-transform duration-700 cubic-bezier(0.25, 1, 0.5, 1)"
           style={{
-            transform: `translateZ(calc(var(--card-width) * -1.207)) rotateY(${(-activeIndex * 45) + dragOffset}deg)`,
+            transform: `translateZ(calc(var(--card-width) * -1.207)) rotateY(${(-activeIndex * ROTATION_PER_CARD) + dragOffset}deg)`,
           }}
         >
           {days.map((dayStr, idx) => {
-            const isActive = idx === activeIndex;
-            const isNeighbor = idx === (activeIndex - 1 + 8) % 8 || idx === (activeIndex + 1) % 8;
+            const isActive   = idx === activeIndex;
+            const isNeighbor = idx === (activeIndex - 1 + TOTAL_DAYS) % TOTAL_DAYS
+                            || idx === (activeIndex + 1) % TOTAL_DAYS;
             const weatherItem = loadedData[dayStr];
-            
+
             return (
               <div
-                key={idx}
+                key={dayStr}
                 className="absolute w-full max-w-[var(--card-width)] h-[80vh] preserve-3d"
                 style={{
-                  transform: `rotateY(${idx * 45}deg) translateZ(calc(var(--card-width) * 1.207))`,
+                  transform: `rotateY(${idx * ROTATION_PER_CARD}deg) translateZ(calc(var(--card-width) * 1.207))`,
                 }}
               >
                 <WeatherWindow
-                  lat={coords.lat}
-                  lon={coords.lon}
                   title={coords.title}
                   dateStr={dayStr}
                   active={isActive}
@@ -315,9 +299,9 @@ export default function CylinderTimeline({ initialWeather }) {
           })}
         </div>
 
-        {/* ─ Side Arrows (Desktop/Tapping Controls) ─ */}
+        {/* ─ Side Arrow Controls ─ */}
         <button
-          onClick={() => setActiveIndex((prev) => (prev - 1 + 8) % 8)}
+          onClick={() => setActiveIndex((prev) => (prev - 1 + TOTAL_DAYS) % TOTAL_DAYS)}
           className="absolute left-4 p-3 bg-white/5 hover:bg-white/10 border border-white/15 hover:border-white/25 rounded-full text-white backdrop-blur-md transition-all shadow-lg cursor-pointer hover:scale-105 active:scale-95 z-20 shrink-0"
           title="Previous Day"
         >
@@ -325,7 +309,7 @@ export default function CylinderTimeline({ initialWeather }) {
         </button>
 
         <button
-          onClick={() => setActiveIndex((prev) => (prev + 1) % 8)}
+          onClick={() => setActiveIndex((prev) => (prev + 1) % TOTAL_DAYS)}
           className="absolute right-4 p-3 bg-white/5 hover:bg-white/10 border border-white/15 hover:border-white/25 rounded-full text-white backdrop-blur-md transition-all shadow-lg cursor-pointer hover:scale-105 active:scale-95 z-20 shrink-0"
           title="Next Day"
         >

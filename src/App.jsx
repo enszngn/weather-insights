@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import useWeather from './hooks/useWeather';
 import CylinderTimeline from './components/CylinderTimeline';
 import StatsPage from './components/StatsPage';
@@ -9,12 +9,7 @@ import StatsPage from './components/StatsPage';
  * Responsibilities:
  *  1. Client-side routing (/ vs /stats) via History API.
  *  2. Initial weather + location from the Cloudflare Worker (/api/weather).
- *  3. selectedLocation state — starts from server IP geolocation,
- *     updated by CitySearch when user picks a different city.
- *  4. Renders <CitySearch> (fixed at top) + <WeatherWindow> (full-screen).
- *
- * Note: All weather display logic, insight generation, and theme gradients
- * live inside WeatherWindow — App.jsx has no weather rendering responsibility.
+ *  3. Renders <CylinderTimeline> (full-screen) + stats route.
  */
 export default function App() {
   // ── Routing ───────────────────────────────────────────────────────────────────
@@ -26,14 +21,12 @@ export default function App() {
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
 
-  const navigate = (to) => {
+  const navigate = useCallback((to) => {
     window.history.pushState({}, '', to);
     setPath(to);
-  };
+  }, []);
 
   // ── Weather & Location ────────────────────────────────────────────────────────
-  // useWeather fetches GET /api/weather — server resolves location via request.cf.
-  // The returned weather object includes lat/lon from the server response.
   const { weather, loading, error } = useWeather();
 
   // ── Stats page ────────────────────────────────────────────────────────────────
@@ -48,11 +41,7 @@ export default function App() {
   // ── Main render ───────────────────────────────────────────────────────────────
   return (
     <div className="relative">
-
-      {/* Full-screen weather display — location from server IP geolocation */}
-      {weather && (
-        <CylinderTimeline initialWeather={weather} />
-      )}
+      {weather && <CylinderTimeline initialWeather={weather} />}
 
       {/* Floating visitor statistics button */}
       <button

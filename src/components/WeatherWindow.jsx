@@ -1,20 +1,24 @@
-import { useState, useEffect, useRef } from 'react';
+import { useMemo } from 'react';
 import InsightCard from './InsightCard';
 import MetricCard from './MetricCard';
-import { 
-  Droplets, 
-  Wind, 
-  Sun, 
-  Cloud, 
-  CloudRain, 
-  Snowflake, 
-  CloudLightning, 
-  CloudFog, 
-  CloudDrizzle 
+import {
+  Droplets,
+  Wind,
+  Sun,
+  Cloud,
+  CloudRain,
+  Snowflake,
+  CloudLightning,
+  CloudFog,
+  CloudDrizzle,
 } from 'lucide-react';
 import { generateInsights, getSystemTheme } from '../utils/weatherLogic';
 
-// Helper to map WMO weather codes to Lucide icons
+// ── Module-level constants & pure helpers ─────────────────────────────────────
+
+const TOTAL_HOURS = 24;
+
+/** Maps a WMO weather code to its Lucide icon component. */
 function getWeatherIcon(code) {
   if (code === 0) return Sun;
   if ([1, 2, 3].includes(code)) return Cloud;
@@ -27,173 +31,111 @@ function getWeatherIcon(code) {
 }
 
 /**
+ * Returns a human-readable date label for a card header.
+ * Pure function — defined at module level to avoid re-creation on every render.
+ */
+function getHeaderDateLabel(dateString) {
+  const dateObj  = new Date(dateString + 'T00:00:00');
+  const today    = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+
+  if (dateObj.toDateString() === today.toDateString())    return 'TODAY';
+  if (dateObj.toDateString() === tomorrow.toDateString()) return 'TOMORROW';
+  return dateObj
+    .toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    .toUpperCase();
+}
+
+/**
+ * Shared event handler props that stop touch/mouse/wheel propagation,
+ * preventing swipe/drag conflicts between scrollable children and the
+ * parent CylinderTimeline gesture handlers.
+ */
+const STOP_PROPAGATION = {
+  onTouchStart: (e) => e.stopPropagation(),
+  onTouchMove:  (e) => e.stopPropagation(),
+  onTouchEnd:   (e) => e.stopPropagation(),
+  onMouseDown:  (e) => e.stopPropagation(),
+  onMouseMove:  (e) => e.stopPropagation(),
+  onMouseUp:    (e) => e.stopPropagation(),
+  onWheel:      (e) => e.stopPropagation(),
+};
+
+// ── Component ─────────────────────────────────────────────────────────────────
+
+/**
  * WeatherWindow — Renders a glassmorphic weather card with absolute layout.
  *
  * Props:
- *  lat           {number}  – Latitude to display weather for.
- *  lon           {number}  – Longitude to display weather for.
- *  title         {string}  – City name.
  *  dateStr       {string}  – YYYY-MM-DD representing the date of this card.
- *  initialWeather {object} – Pre-fetched weather object as fallback.
+ *  title         {string}  – City name override.
  *  active        {boolean} – Whether this card is centered/active.
- *  weatherData   {object}  – Parent-provided weather data (for prefetching).
+ *  visible       {boolean} – Whether this card is visible (active or neighbor).
+ *  weatherData   {object}  – Parent-provided weather data.
  *  loadingData   {boolean} – Parent-provided loading state.
  *  errorData     {string}  – Parent-provided error state.
  */
 export default function WeatherWindow({
-  lat,
-  lon,
   title,
   dateStr,
-  initialWeather = null,
-  active = true,
-  visible = true,
+  active      = true,
+  visible     = true,
   weatherData = null,
   loadingData = false,
-  errorData = null,
+  errorData   = null,
 }) {
-  const isFirstRender = useRef(true);
-  const [weather, setWeather] = useState(initialWeather);
-  const [loading, setLoading] = useState(initialWeather === null);
-  const [error, setError] = useState(null);
-
-  // ── Time-based algebraic darkness overlay ────────────────────────────────────
-  const now = new Date();
-  const minutes = now.getHours() * 60 + now.getMinutes();
+  // ── Time-based darkness overlay ───────────────────────────────────────────────
+  const now          = new Date();
+  const minutes      = now.getHours() * 60 + now.getMinutes();
   const diffFromNoon = Math.abs(minutes - 720);
-  const ratio = diffFromNoon / 720;       // 0.0 at noon → 1.0 at midnight
-  const darkness = 0.2 + ratio * 0.6;    // maps to 0.2 – 0.8
+  const darkness     = 0.2 + (diffFromNoon / 720) * 0.6; // 0.2 at noon → 0.8 at midnight
 
-  // ── Standalone weather data fetching fallback ────────────────────────────────
-  useEffect(() => {
-    // If data is provided by parent (CylinderTimeline), skip self-fetching
-    if (weatherData !== null) return;
-
-    if (isFirstRender.current) {
-      isFirstRender.current = false;
-      if (initialWeather !== null) return;
-    }
-
-    const controller = new AbortController();
-
-    const fetchWeather = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const url =
-          `https://api.open-meteo.com/v1/forecast` +
-          `?latitude=${lat}&longitude=${lon}` +
-          `&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code` +
-          `&hourly=temperature_2m,weather_code` +
-          `&daily=uv_index_max&timezone=auto` +
-          `&start_date=${dateStr}&end_date=${dateStr}`;
-
-        const res = await fetch(url, { signal: controller.signal });
-        if (!res.ok) throw new Error(`Open-Meteo returned HTTP ${res.status}`);
-        const data = await res.json();
-
-        const currentHour = now.getHours();
-        
-        // Check if the date corresponds to local today
-        const year = now.getFullYear();
-        const month = String(now.getMonth() + 1).padStart(2, '0');
-        const day = String(now.getDate()).padStart(2, '0');
-        const localTodayStr = `${year}-${month}-${day}`;
-        const isToday = dateStr === localTodayStr;
-
-        setWeather({
-          temp: isToday && data.current ? data.current.temperature_2m : data.hourly.temperature_2m[currentHour],
-          humidity: isToday && data.current ? data.current.relative_humidity_2m : (data.hourly.relative_humidity_2m?.[currentHour] ?? 50),
-          windSpeed: isToday && data.current ? data.current.wind_speed_10m : (data.hourly.wind_speed_10m?.[currentHour] ?? 10),
-          uvIndex: data.daily.uv_index_max[0],
-          weatherCode: isToday && data.current ? data.current.weather_code : data.hourly.weather_code[currentHour],
-          hourly: data.hourly,
-          locationName: title || data.timezone.split('/').pop().replace(/_/g, ' '),
-          lat,
-          lon,
-        });
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          setError('Could not load weather data.');
-        }
-      } finally {
-        if (!controller.signal.aborted) setLoading(false);
-      }
-    };
-
-    fetchWeather();
-    return () => controller.abort();
-  }, [lat, lon, dateStr, weatherData]);
-
-  // Resolve active displays
-  const displayWeather = weatherData || weather;
-  const displayLoading = weatherData ? loadingData : loading;
-  const displayError = weatherData ? errorData : error;
-
-  const themeGradient = displayWeather
-    ? getSystemTheme(displayWeather.weatherCode)
+  // ── Derived values ────────────────────────────────────────────────────────────
+  const themeGradient = weatherData
+    ? getSystemTheme(weatherData.weatherCode)
     : 'from-slate-800 to-slate-950';
-  const insights = displayWeather ? generateInsights(displayWeather) : [];
-  const displayName = title || displayWeather?.locationName || '';
 
-  // Calculate 24h hourly forecast starting from current hour
-  const currentHour = now.getHours();
-  const sortedHourly = [];
-  if (displayWeather?.hourly) {
-    const times = displayWeather.hourly.time || [];
-    const temps = displayWeather.hourly.temperature_2m || [];
-    const codes = displayWeather.hourly.weather_code || [];
+  const displayName = title || weatherData?.locationName || '';
 
-    // Filter items matching local date prefix YYYY-MM-DD
-    const localHourly = [];
+  const insights = useMemo(
+    () => generateInsights(weatherData),
+    [weatherData]
+  );
+
+  // Build a 24-hour hourly forecast starting from the current hour, filtered
+  // to the card's specific date so each day shows the right data.
+  const sortedHourly = useMemo(() => {
+    if (!weatherData?.hourly) return [];
+
+    const currentHour = now.getHours();
+    const times = weatherData.hourly.time          || [];
+    const temps = weatherData.hourly.temperature_2m || [];
+    const codes = weatherData.hourly.weather_code   || [];
+
+    const dayHours = [];
     for (let i = 0; i < times.length; i++) {
       if (times[i].startsWith(dateStr)) {
-        const timeVal = times[i].split('T')[1]; // "HH:MM"
-        localHourly.push({
-          time: timeVal,
-          temp: temps[i],
+        dayHours.push({
+          time:        times[i].split('T')[1], // "HH:MM"
+          temp:        temps[i],
           weatherCode: codes[i],
         });
       }
     }
 
-    // Reorder to start from currentHour (wrap around 24 hours)
-    if (localHourly.length === 24) {
-      for (let i = 0; i < 24; i++) {
-        const idx = (currentHour + i) % 24;
-        if (localHourly[idx]) {
-          sortedHourly.push(localHourly[idx]);
-        }
-      }
-    } else {
-      sortedHourly.push(...localHourly);
-    }
-  }
+    if (dayHours.length !== TOTAL_HOURS) return dayHours;
 
-  // Format date display for header card (e.g. "Tomorrow", "9 Jun")
-  const getHeaderDateLabel = (dateString) => {
-    const dateObj = new Date(dateString + 'T00:00:00');
-    const today = new Date();
-    const tomorrow = new Date();
-    tomorrow.setDate(today.getDate() + 1);
+    // Reorder so the current hour comes first (wraps around midnight).
+    return Array.from({ length: TOTAL_HOURS }, (_, i) => dayHours[(currentHour + i) % TOTAL_HOURS]);
+  }, [weatherData, dateStr]);
 
-    if (dateObj.toDateString() === today.toDateString()) {
-      return 'TODAY';
-    } else if (dateObj.toDateString() === tomorrow.toDateString()) {
-      return 'TOMORROW';
-    } else {
-      return dateObj.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }).toUpperCase();
-    }
-  };
-
-  let cardClass = '';
-  if (active) {
-    cardClass = 'scale-100 opacity-100 filter-none pointer-events-auto';
-  } else if (visible) {
-    cardClass = 'scale-90 opacity-40 pointer-events-none';
-  } else {
-    cardClass = 'scale-75 opacity-0 pointer-events-none';
-  }
+  // ── Card visibility class ─────────────────────────────────────────────────────
+  const cardClass = active
+    ? 'scale-100 opacity-100 filter-none pointer-events-auto'
+    : visible
+      ? 'scale-90 opacity-40 pointer-events-none'
+      : 'scale-75 opacity-0 pointer-events-none';
 
   return (
     <div
@@ -205,15 +147,16 @@ export default function WeatherWindow({
         style={{ opacity: darkness }}
       />
 
-      {/* ── Inactive Card Blur Overlay (prevents browser scroll compositing bugs) ── */}
+      {/* ── Inactive blur overlay (prevents browser scroll compositing bugs) ── */}
       {!active && visible && (
         <div className="absolute inset-0 bg-slate-950/10 backdrop-blur-[3px] z-20 pointer-events-none" />
       )}
 
       {/* ── Content Layer ── */}
       <div className="absolute inset-0 z-10 p-4">
+
         {/* Loading state */}
-        {displayLoading && !displayWeather && (
+        {loadingData && !weatherData && (
           <div className="absolute inset-0 flex items-center justify-center">
             <div className="text-white/50 tracking-[0.4em] font-light animate-pulse text-xs uppercase">
               Loading…
@@ -222,16 +165,16 @@ export default function WeatherWindow({
         )}
 
         {/* Error state */}
-        {displayError && !displayWeather && (
+        {errorData && !weatherData && (
           <div className="absolute inset-0 flex items-center justify-center p-6 text-center">
             <p className="text-white/35 text-xs uppercase tracking-widest leading-relaxed">
-              {displayError}
+              {errorData}
             </p>
           </div>
         )}
 
         {/* Weather details */}
-        {displayWeather && (
+        {weatherData && (
           <>
             {/* ─ City Header & Date ─ */}
             <div className="absolute top-[7%] inset-x-4 text-center select-none">
@@ -241,7 +184,7 @@ export default function WeatherWindow({
               <p className="text-[clamp(0.65rem,1.6vh,0.85rem)] uppercase tracking-[0.3em] font-medium text-cyan-300">
                 {getHeaderDateLabel(dateStr)}
               </p>
-              {displayLoading && (
+              {loadingData && (
                 <span className="text-[10px] text-white/30 uppercase tracking-wider animate-pulse block mt-0.5">
                   Updating…
                 </span>
@@ -251,23 +194,17 @@ export default function WeatherWindow({
             {/* ─ Temperature — centered at 22% vertical ─ */}
             <div className="absolute top-[22%] inset-x-0 text-center pointer-events-none select-none">
               <h1 className="text-[clamp(3.5rem,15vh,7rem)] leading-none font-bold tracking-tighter italic text-white drop-shadow-2xl">
-                {Math.round(displayWeather.temp)}°
+                {Math.round(weatherData.temp)}°
               </h1>
             </div>
 
             {/* ─ Insight Cards — at 40% vertical ─ */}
-            <div 
+            <div
               className="absolute top-[40%] inset-x-4 max-h-[10vh] overflow-y-auto custom-scrollbar space-y-1.5"
-              onTouchStart={(e) => e.stopPropagation()}
-              onTouchMove={(e) => e.stopPropagation()}
-              onTouchEnd={(e) => e.stopPropagation()}
-              onMouseDown={(e) => e.stopPropagation()}
-              onMouseMove={(e) => e.stopPropagation()}
-              onMouseUp={(e) => e.stopPropagation()}
-              onWheel={(e) => e.stopPropagation()}
+              {...STOP_PROPAGATION}
             >
-              {insights.map((text, i) => (
-                <InsightCard key={i} text={text} />
+              {insights.map((text) => (
+                <InsightCard key={text} text={text} />
               ))}
             </div>
 
@@ -277,22 +214,16 @@ export default function WeatherWindow({
                 <p className="text-[9px] uppercase tracking-[0.25em] text-white/45 mb-1.5 select-none font-light">
                   Hourly Forecast (24h)
                 </p>
-                <div 
+                <div
                   className="flex overflow-x-auto gap-2 py-1.5 no-scrollbar scroll-smooth touch-pan-x"
-                  onTouchStart={(e) => e.stopPropagation()}
-                  onTouchMove={(e) => e.stopPropagation()}
-                  onTouchEnd={(e) => e.stopPropagation()}
-                  onMouseDown={(e) => e.stopPropagation()}
-                  onMouseMove={(e) => e.stopPropagation()}
-                  onMouseUp={(e) => e.stopPropagation()}
-                  onWheel={(e) => e.stopPropagation()}
+                  {...STOP_PROPAGATION}
                 >
-                  {sortedHourly.map((hourItem, idx) => {
+                  {sortedHourly.map((hourItem) => {
                     const IconComp = getWeatherIcon(hourItem.weatherCode);
-                    const isCurrent = parseInt(hourItem.time.split(':')[0]) === currentHour;
+                    const isCurrent = parseInt(hourItem.time.split(':')[0], 10) === now.getHours();
                     return (
                       <div
-                        key={idx}
+                        key={hourItem.time}
                         className={`flex flex-col items-center justify-between py-2 px-2.5 min-w-[62px] border transition-all duration-300 ${
                           isCurrent
                             ? 'bg-cyan-500/25 border-cyan-400/50 shadow-[0_0_8px_rgba(34,211,238,0.25)]'
@@ -318,8 +249,8 @@ export default function WeatherWindow({
             {/* ─ Metric Cards — at 80% vertical ─ */}
             <div className="absolute top-[80%] inset-x-4">
               <div className="grid grid-cols-2 gap-2 opacity-90">
-                <MetricCard Icon={Droplets} label="Humidity" value={displayWeather.humidity} unit="%" />
-                <MetricCard Icon={Wind} label="Wind" value={displayWeather.windSpeed} unit="km/h" />
+                <MetricCard Icon={Droplets} label="Humidity" value={weatherData.humidity}  unit="%" />
+                <MetricCard Icon={Wind}     label="Wind"     value={weatherData.windSpeed} unit="km/h" />
               </div>
             </div>
           </>

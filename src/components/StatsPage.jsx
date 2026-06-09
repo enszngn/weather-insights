@@ -1,14 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { ResponsiveContainer, LineChart, Line, XAxis, YAxis, Tooltip, CartesianGrid } from 'recharts';
 import { MapContainer, TileLayer, Marker, Popup } from 'react-leaflet';
 import L from 'leaflet';
-
-// Import Leaflet CSS styles
 import 'leaflet/dist/leaflet.css';
 
-// Define a custom animated SVG map pin icon using the new color palette
-const createCustomIcon = (visitCount) => {
-  return L.divIcon({
+// ── Module-level helpers ──────────────────────────────────────────────────────
+
+/** Creates an animated SVG map pin icon sized by visit count. */
+const createCustomIcon = (visitCount) =>
+  L.divIcon({
     className: 'custom-map-pin',
     html: `
       <div class="relative flex items-center justify-center">
@@ -21,24 +21,59 @@ const createCustomIcon = (visitCount) => {
         </div>
       </div>
     `,
-    iconSize: [32, 32],
-    iconAnchor: [16, 16]
+    iconSize:   [32, 32],
+    iconAnchor: [16, 16],
   });
-};
+
+/**
+ * Backfills missing days with 0 so the chart always renders a full 7-day line.
+ * Pure function — kept at module level so it can be used inside useMemo.
+ */
+function buildChartData(chartData) {
+  if (!chartData?.length) return [];
+
+  const slots = Array.from({ length: 7 }, (_, i) => {
+    const d = new Date();
+    d.setDate(d.getDate() - (6 - i));
+    return d.toISOString().split('T')[0];
+  });
+
+  const dataMap = new Map(chartData.map((item) => [item.date, item.count]));
+
+  return slots.map((date) => ({
+    date:     date.split('-').slice(1).reverse().join('/'), // → DD/MM
+    Visitors: dataMap.get(date) || 0,
+  }));
+}
+
+// ── Shared UI atoms ───────────────────────────────────────────────────────────
+
+/** Reusable KPI scorecard. */
+function KpiCard({ label, value, suffix }) {
+  return (
+    <div className="bg-[#5e6572]/20 border border-[#5e6572]/80 p-5 rounded-none backdrop-blur-md">
+      <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">{label}</div>
+      <div className="text-3xl font-bold text-white mt-2 flex items-baseline gap-2 truncate pr-2" title={String(value)}>
+        {value}
+        {suffix && <span className="text-xs font-normal text-[#a9b4c2]">{suffix}</span>}
+      </div>
+    </div>
+  );
+}
+
+// ── Component ─────────────────────────────────────────────────────────────────
 
 export default function StatsPage({ navigate }) {
-  const [password, setPassword] = useState('');
+  const [password, setPassword]           = useState('');
   const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [stats, setStats] = useState(null);
+  const [error, setError]                 = useState('');
+  const [loading, setLoading]             = useState(false);
+  const [stats, setStats]                 = useState(null);
 
-  // Check if stats password session token exists on component mount
+  // Restore session if a stored password exists.
   useEffect(() => {
     const savedPassword = sessionStorage.getItem('stats_password');
-    if (savedPassword) {
-      fetchStats(savedPassword);
-    }
+    if (savedPassword) fetchStats(savedPassword);
   }, []);
 
   const fetchStats = async (authPassword) => {
@@ -46,12 +81,9 @@ export default function StatsPage({ navigate }) {
     setError('');
     try {
       const response = await fetch('/api', {
-        method: 'GET',
-        headers: {
-          'Authorization': `Bearer ${authPassword}`
-        }
+        method:  'GET',
+        headers: { Authorization: `Bearer ${authPassword}` },
       });
-
       const data = await response.json();
 
       if (response.ok && data.success) {
@@ -63,7 +95,7 @@ export default function StatsPage({ navigate }) {
         sessionStorage.removeItem('stats_password');
       }
     } catch (err) {
-      console.error("Error fetching stats:", err);
+      console.error('Error fetching stats:', err);
       setError('A server error occurred while fetching data.');
     } finally {
       setLoading(false);
@@ -79,41 +111,29 @@ export default function StatsPage({ navigate }) {
     fetchStats(password);
   };
 
-  // Backfill missing days with 0 to ensure a smooth continuous chart line
-  const getCleanedChartData = () => {
-    if (!stats || !stats.chartData) return [];
-
-    const days = [];
-    for (let i = 6; i >= 0; i--) {
-      const d = new Date();
-      d.setDate(d.getDate() - i);
-      const dateStr = d.toISOString().split('T')[0];
-      days.push(dateStr);
-    }
-
-    const dataMap = new Map(stats.chartData.map(item => [item.date, item.count]));
-
-    return days.map(date => ({
-      date: date.split('-').slice(1).reverse().join('/'), // Convert to DD/MM formatting
-      Visitors: dataMap.get(date) || 0
-    }));
+  const handleLogout = () => {
+    sessionStorage.removeItem('stats_password');
+    setIsAuthenticated(false);
+    setStats(null);
+    setPassword('');
   };
 
-  // Calculate KPI statistics from metrics payload
-  const totalVisitsCount = stats?.visits?.length || 0;
-  const uniqueCitiesCount = stats?.pins?.length || 0;
-  const topCityName = stats?.pins?.[0]?.city || 'None';
+  // ── Derived data — memoized to avoid re-computation on every render ───────────
+  const chartData        = useMemo(() => buildChartData(stats?.chartData), [stats?.chartData]);
+  const totalVisitsCount = stats?.visits?.length  ?? 0;
+  const uniqueCitiesCount = stats?.pins?.length   ?? 0;
+  const topCityName       = stats?.pins?.[0]?.city ?? 'None';
 
+  // ── Login screen ──────────────────────────────────────────────────────────────
   if (!isAuthenticated) {
     return (
       <div className="min-h-screen w-full flex items-center justify-center bg-[#1c2321] p-4 font-sans select-none">
-        {/* Blur glow effect background overlay using new light blue color */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#a9b4c2]/10 rounded-full blur-[100px] pointer-events-none"></div>
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#a9b4c2]/10 rounded-full blur-[100px] pointer-events-none" />
 
         <div className="relative w-full max-w-md bg-[#5e6572]/30 border border-[#5e6572]/80 backdrop-blur-xl p-8 rounded-none shadow-2xl animate-fade-in">
           <div className="text-center mb-8">
             <div className="h-12 w-12 rounded-none bg-[#a9b4c2]/10 border border-[#a9b4c2]/20 text-[#a9b4c2] flex items-center justify-center mx-auto mb-4">
-              <svg xmlns="http://www.w3.org/2050/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             </div>
@@ -122,16 +142,14 @@ export default function StatsPage({ navigate }) {
           </div>
 
           <form onSubmit={handleLoginSubmit} className="space-y-4">
-            <div>
-              <input 
-                type="password" 
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Administrator Password"
-                className="w-full bg-[#1c2321]/60 border border-[#5e6572]/60 focus:border-[#a9b4c2]/80 text-[#eef1ef] rounded-none py-3 px-4 outline-none text-center tracking-widest text-sm transition-all duration-300 placeholder:tracking-normal placeholder:text-slate-500"
-                disabled={loading}
-              />
-            </div>
+            <input
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="Administrator Password"
+              className="w-full bg-[#1c2321]/60 border border-[#5e6572]/60 focus:border-[#a9b4c2]/80 text-[#eef1ef] rounded-none py-3 px-4 outline-none text-center tracking-widest text-sm transition-all duration-300 placeholder:tracking-normal placeholder:text-slate-500"
+              disabled={loading}
+            />
 
             {error && (
               <div className="text-xs text-rose-400 bg-rose-500/5 border border-rose-500/10 py-2.5 px-4 rounded-none text-center">
@@ -139,18 +157,19 @@ export default function StatsPage({ navigate }) {
               </div>
             )}
 
-            <button 
+            <button
               type="submit"
               disabled={loading}
               className="w-full bg-[#a9b4c2] hover:bg-[#7d98a1] text-[#1c2321] font-semibold py-3 rounded-none shadow-lg shadow-[#a9b4c2]/10 hover:shadow-[#7d98a1]/25 active:scale-[0.98] transition-all duration-300 cursor-pointer flex items-center justify-center text-sm disabled:opacity-50"
             >
-              {loading ? (
-                <div className="h-5 w-5 border-2 border-[#1c2321] border-t-transparent rounded-full animate-spin"></div>
-              ) : 'Login'}
+              {loading
+                ? <div className="h-5 w-5 border-2 border-[#1c2321] border-t-transparent rounded-full animate-spin" />
+                : 'Login'
+              }
             </button>
           </form>
 
-          <button 
+          <button
             onClick={() => navigate('/')}
             className="w-full text-slate-400 hover:text-white text-xs text-center mt-6 transition-colors duration-200 cursor-pointer"
           >
@@ -161,32 +180,28 @@ export default function StatsPage({ navigate }) {
     );
   }
 
+  // ── Dashboard ─────────────────────────────────────────────────────────────────
   return (
     <div className="min-h-screen bg-[#1c2321] text-slate-200 p-4 sm:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
-        
-        {/* Header Navigation */}
+
+        {/* Header */}
         <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-[#5e6572]/40 pb-5">
           <div>
             <h1 className="text-2xl font-bold text-[#eef1ef] tracking-tight flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#a9b4c2] animate-pulse"></span>
+              <span className="h-2.5 w-2.5 rounded-full bg-[#a9b4c2] animate-pulse" />
               Visitor Analytics Dashboard
             </h1>
             <p className="text-xs text-slate-400 mt-1">Real-time traffic and visitor location insights.</p>
           </div>
           <div className="flex items-center gap-3">
-            <button 
-              onClick={() => {
-                sessionStorage.removeItem('stats_password');
-                setIsAuthenticated(false);
-                setStats(null);
-                setPassword('');
-              }}
+            <button
+              onClick={handleLogout}
               className="px-4 py-2 bg-[#5e6572]/20 hover:bg-[#5e6572]/40 border border-[#5e6572]/80 text-xs rounded-none font-medium transition-colors cursor-pointer text-rose-400 hover:text-rose-300"
             >
               Logout
             </button>
-            <button 
+            <button
               onClick={() => navigate('/')}
               className="px-4 py-2 bg-[#a9b4c2] hover:bg-[#7d98a1] text-[#1c2321] text-xs rounded-none font-semibold transition-colors cursor-pointer flex items-center gap-1 shadow-lg shadow-[#a9b4c2]/15"
             >
@@ -197,29 +212,12 @@ export default function StatsPage({ navigate }) {
 
         {/* KPI Scorecards */}
         <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-[#5e6572]/20 border border-[#5e6572]/80 p-5 rounded-none backdrop-blur-md">
-            <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">Total Visitors</div>
-            <div className="text-3xl font-bold text-white mt-2 flex items-baseline gap-2">
-              {totalVisitsCount}
-              <span className="text-xs font-normal text-[#a9b4c2]">active logs</span>
-            </div>
-          </div>
-          <div className="bg-[#5e6572]/20 border border-[#5e6572]/80 p-5 rounded-none backdrop-blur-md">
-            <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">Unique Locations</div>
-            <div className="text-3xl font-bold text-white mt-2 flex items-baseline gap-2">
-              {uniqueCitiesCount}
-              <span className="text-xs font-normal text-[#a9b4c2]">cities</span>
-            </div>
-          </div>
-          <div className="bg-[#5e6572]/20 border border-[#5e6572]/80 p-5 rounded-none backdrop-blur-md">
-            <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">Top Location</div>
-            <div className="text-3xl font-bold text-white mt-2 truncate pr-2" title={topCityName}>
-              {topCityName}
-            </div>
-          </div>
+          <KpiCard label="Total Visitors"    value={totalVisitsCount}  suffix="active logs" />
+          <KpiCard label="Unique Locations"  value={uniqueCitiesCount} suffix="cities" />
+          <KpiCard label="Top Location"      value={topCityName} />
         </section>
 
-        {/* Charts & Maps Layout */}
+        {/* Charts & Map */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Traffic Line Chart */}
           <div className="lg:col-span-5 bg-[#5e6572]/20 border border-[#5e6572]/80 p-6 rounded-none flex flex-col backdrop-blur-md h-[400px]">
@@ -231,22 +229,22 @@ export default function StatsPage({ navigate }) {
             </h2>
             <div className="flex-1 w-full text-xs">
               <ResponsiveContainer width="100%" height="100%">
-                <LineChart data={getCleanedChartData()} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
+                <LineChart data={chartData} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
                   <CartesianGrid strokeDasharray="3 3" stroke="#5e6572" strokeOpacity={0.3} vertical={false} />
                   <XAxis dataKey="date" stroke="#7d98a1" axisLine={false} tickLine={false} />
                   <YAxis stroke="#7d98a1" axisLine={false} tickLine={false} allowDecimals={false} />
-                  <Tooltip 
+                  <Tooltip
                     contentStyle={{ backgroundColor: '#1c2321', borderColor: '#5e6572', borderRadius: '0px' }}
                     labelStyle={{ color: '#eef1ef', fontWeight: 'bold' }}
                     itemStyle={{ color: '#a9b4c2' }}
                   />
-                  <Line 
-                    type="monotone" 
-                    dataKey="Visitors" 
-                    stroke="#a9b4c2" 
-                    strokeWidth={3} 
-                    dot={{ fill: '#7d98a1', strokeWidth: 2, r: 4 }} 
-                    activeDot={{ r: 6 }} 
+                  <Line
+                    type="monotone"
+                    dataKey="Visitors"
+                    stroke="#a9b4c2"
+                    strokeWidth={3}
+                    dot={{ fill: '#7d98a1', strokeWidth: 2, r: 4 }}
+                    activeDot={{ r: 6 }}
                   />
                 </LineChart>
               </ResponsiveContainer>
@@ -263,24 +261,13 @@ export default function StatsPage({ navigate }) {
               Visitor Map
             </h2>
             <div className="flex-1 rounded-none overflow-hidden border border-[#5e6572] z-10">
-              <MapContainer 
-                center={[20, 0]} 
-                zoom={1.5} 
-                className="h-full w-full"
-                scrollWheelZoom={true}
-              >
-                {/* Render CartoDB dark mode map tiles */}
+              <MapContainer center={[20, 0]} zoom={1.5} className="h-full w-full" scrollWheelZoom>
                 <TileLayer
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors &copy; <a href="https://carto.com/attributions">CARTO</a>'
                   url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png"
                 />
-                
                 {stats?.pins?.map((pin, i) => (
-                  <Marker 
-                    key={i} 
-                    position={[pin.lat, pin.lon]} 
-                    icon={createCustomIcon(pin.visits)}
-                  >
+                  <Marker key={i} position={[pin.lat, pin.lon]} icon={createCustomIcon(pin.visits)}>
                     <Popup>
                       <div className="text-slate-900 font-sans p-1">
                         <strong className="text-sm text-slate-800 block mb-0.5">{pin.city}, {pin.country}</strong>
@@ -294,7 +281,7 @@ export default function StatsPage({ navigate }) {
           </div>
         </section>
 
-        {/* Telemetry Table */}
+        {/* Visits Table */}
         <section className="bg-[#5e6572]/20 border border-[#5e6572]/80 rounded-none p-6 backdrop-blur-md">
           <h2 className="text-sm font-semibold text-[#eef1ef] uppercase tracking-wider mb-6 flex items-center gap-2">
             <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#a9b4c2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -314,14 +301,16 @@ export default function StatsPage({ navigate }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#5e6572]/40 bg-[#5e6572]/10">
-                {stats?.visits && stats.visits.length > 0 ? (
+                {stats?.visits?.length ? (
                   stats.visits.map((visit) => (
                     <tr key={visit.id} className="hover:bg-[#5e6572]/30 transition-colors duration-200">
                       <td className="py-4 px-5 text-slate-400 font-mono">#{visit.id}</td>
                       <td className="py-4 px-5 font-mono text-[#a9b4c2]/95">{visit.ip}</td>
                       <td className="py-4 px-5 text-white font-medium">
                         {visit.city_name || visit.city || 'Unknown'}
-                        {(visit.country) && <span className="text-[10px] text-slate-400 font-normal block mt-0.5">{visit.country}</span>}
+                        {visit.country && (
+                          <span className="text-[10px] text-slate-400 font-normal block mt-0.5">{visit.country}</span>
+                        )}
                       </td>
                       <td className="py-4 px-5 font-mono text-slate-300">
                         {visit.lat ? visit.lat.toFixed(4) : '0.0000'}, {visit.lon ? visit.lon.toFixed(4) : '0.0000'}
