@@ -38,6 +38,14 @@ Weather Insights focuses on **fast insights**. Unlike traditional weather apps c
 
 ---
 
+## 💎 Key Features & Architecture
+
+* **Server-Side IP Geolocation:** The application automatically resolves the user's city and coordinates at the edge using Cloudflare serverless headers, eliminating unnecessary browser popups.
+* **Edge-Native Caching:** Implements Cloudflare's hardware-level Cache API (`caches.default`) to store regional weather data for 15 minutes, drastically reducing external API round-trips and improving response times to near-zero.
+* **Visitor Insights (D1 SQLite):** Every unique application session triggers an asynchronous logging mechanism that stores analytics data (Client IP, City, Country, and precise Coordinates) directly into a **Cloudflare D1 Serverless SQLite** database database instance.
+
+---
+
 ## ⚙️ Installation & Setup
 
 To get a local copy up and running, follow these simple steps:
