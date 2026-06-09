@@ -12,8 +12,6 @@ Weather Insights focuses on **fast insights**. Unlike traditional weather apps c
 
 ---
 
----
-
 ## 📸 Screenshots
 
 ### 📱 3D Cylindrical Timeline Interface
