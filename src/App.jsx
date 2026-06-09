@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import useWeather from './hooks/useWeather';
-import WeatherWindow from './components/WeatherWindow';
+import CylinderTimeline from './components/CylinderTimeline';
 import StatsPage from './components/StatsPage';
 
 /**
@@ -51,13 +51,7 @@ export default function App() {
 
       {/* Full-screen weather display — location from server IP geolocation */}
       {weather && (
-        <WeatherWindow
-          lat={weather.lat}
-          lon={weather.lon}
-          title={weather.locationName}
-          date="current"
-          initialWeather={weather}
-        />
+        <CylinderTimeline initialWeather={weather} />
       )}
 
       {/* Floating visitor statistics button */}

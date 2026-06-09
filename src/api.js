@@ -42,7 +42,7 @@ export async function onRequestGetWeather(context) {
 
     // ── 4. Cache MISS: fetch live data ────────────────────────────────────────────
     if (!weatherData) {
-        const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=uv_index_max&timezone=auto`;
+        const meteoUrl = `https://api.open-meteo.com/v1/forecast?latitude=${lat}&longitude=${lon}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&hourly=temperature_2m,weather_code&daily=uv_index_max&timezone=auto`;
 
         let meteoData;
         try {
@@ -77,6 +77,7 @@ export async function onRequestGetWeather(context) {
             windSpeed:    meteoData.current.wind_speed_10m,
             uvIndex:      meteoData.daily.uv_index_max[0],
             weatherCode:  meteoData.current.weather_code,
+            hourly:       meteoData.hourly,
             locationName,
             lat,
             lon,
