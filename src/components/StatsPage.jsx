@@ -12,11 +12,11 @@ const createCustomIcon = (visitCount) => {
     className: 'custom-map-pin',
     html: `
       <div class="relative flex items-center justify-center">
-        <div class="absolute h-8 w-8 rounded-full bg-[#8fe0ff]/25 animate-ping"></div>
-        <div class="relative h-4 w-4 rounded-full bg-[#8fe0ff] border-2 border-[#2b235a] flex items-center justify-center shadow-lg">
+        <div class="absolute h-8 w-8 rounded-full bg-[#a9b4c2]/25 animate-ping"></div>
+        <div class="relative h-4 w-4 rounded-full bg-[#a9b4c2] border-2 border-[#1c2321] flex items-center justify-center shadow-lg">
           <div class="h-1.5 w-1.5 rounded-full bg-white"></div>
         </div>
-        <div class="absolute -top-6 bg-[#31255a]/90 text-[10px] text-[#8fe0ff] px-1.5 py-0.5 rounded-none border border-[#54416d]/50 shadow backdrop-blur-sm whitespace-nowrap font-medium pointer-events-none">
+        <div class="absolute -top-6 bg-[#1c2321]/90 text-[10px] text-[#a9b4c2] px-1.5 py-0.5 rounded-none border border-[#5e6572]/50 shadow backdrop-blur-sm whitespace-nowrap font-medium pointer-events-none">
           ${visitCount} Visits
         </div>
       </div>
@@ -106,18 +106,18 @@ export default function StatsPage({ navigate }) {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen w-full flex items-center justify-center bg-[#2b235a] p-4 font-sans select-none">
+      <div className="min-h-screen w-full flex items-center justify-center bg-[#1c2321] p-4 font-sans select-none">
         {/* Blur glow effect background overlay using new light blue color */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#8fe0ff]/10 rounded-full blur-[100px] pointer-events-none"></div>
+        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-[#a9b4c2]/10 rounded-full blur-[100px] pointer-events-none"></div>
 
-        <div className="relative w-full max-w-md bg-[#31255a]/60 border border-[#54416d]/80 backdrop-blur-xl p-8 rounded-none shadow-2xl animate-fade-in">
+        <div className="relative w-full max-w-md bg-[#5e6572]/30 border border-[#5e6572]/80 backdrop-blur-xl p-8 rounded-none shadow-2xl animate-fade-in">
           <div className="text-center mb-8">
-            <div className="h-12 w-12 rounded-none bg-[#8fe0ff]/10 border border-[#8fe0ff]/20 text-[#8fe0ff] flex items-center justify-center mx-auto mb-4">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+            <div className="h-12 w-12 rounded-none bg-[#a9b4c2]/10 border border-[#a9b4c2]/20 text-[#a9b4c2] flex items-center justify-center mx-auto mb-4">
+              <svg xmlns="http://www.w3.org/2050/svg" className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
               </svg>
             </div>
-            <h1 className="text-xl font-semibold text-white tracking-wide uppercase">Admin Dashboard Login</h1>
+            <h1 className="text-xl font-semibold text-[#eef1ef] tracking-wide uppercase">Admin Dashboard Login</h1>
             <p className="text-xs text-slate-400 mt-2">Enter the administrator password to access this panel.</p>
           </div>
 
@@ -128,7 +128,7 @@ export default function StatsPage({ navigate }) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Administrator Password"
-                className="w-full bg-[#2b235a]/60 border border-[#54416d]/60 focus:border-[#8fe0ff]/80 text-white rounded-none py-3 px-4 outline-none text-center tracking-widest text-sm transition-all duration-300 placeholder:tracking-normal placeholder:text-slate-500"
+                className="w-full bg-[#1c2321]/60 border border-[#5e6572]/60 focus:border-[#a9b4c2]/80 text-[#eef1ef] rounded-none py-3 px-4 outline-none text-center tracking-widest text-sm transition-all duration-300 placeholder:tracking-normal placeholder:text-slate-500"
                 disabled={loading}
               />
             </div>
@@ -142,10 +142,10 @@ export default function StatsPage({ navigate }) {
             <button 
               type="submit"
               disabled={loading}
-              className="w-full bg-[#8fe0ff] hover:bg-[#75b4e3] text-[#2b235a] font-semibold py-3 rounded-none shadow-lg shadow-[#8fe0ff]/10 hover:shadow-[#75b4e3]/25 active:scale-[0.98] transition-all duration-300 cursor-pointer flex items-center justify-center text-sm disabled:opacity-50"
+              className="w-full bg-[#a9b4c2] hover:bg-[#7d98a1] text-[#1c2321] font-semibold py-3 rounded-none shadow-lg shadow-[#a9b4c2]/10 hover:shadow-[#7d98a1]/25 active:scale-[0.98] transition-all duration-300 cursor-pointer flex items-center justify-center text-sm disabled:opacity-50"
             >
               {loading ? (
-                <div className="h-5 w-5 border-2 border-[#2b235a] border-t-transparent rounded-full animate-spin"></div>
+                <div className="h-5 w-5 border-2 border-[#1c2321] border-t-transparent rounded-full animate-spin"></div>
               ) : 'Login'}
             </button>
           </form>
@@ -162,14 +162,14 @@ export default function StatsPage({ navigate }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#2b235a] text-slate-200 p-4 sm:p-8 font-sans">
+    <div className="min-h-screen bg-[#1c2321] text-slate-200 p-4 sm:p-8 font-sans">
       <div className="max-w-7xl mx-auto space-y-6">
         
         {/* Header Navigation */}
-        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-[#54416d]/40 pb-5">
+        <header className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 border-b border-[#5e6572]/40 pb-5">
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight flex items-center gap-2">
-              <span className="h-2.5 w-2.5 rounded-full bg-[#8fe0ff] animate-pulse"></span>
+            <h1 className="text-2xl font-bold text-[#eef1ef] tracking-tight flex items-center gap-2">
+              <span className="h-2.5 w-2.5 rounded-full bg-[#a9b4c2] animate-pulse"></span>
               Visitor Analytics Dashboard
             </h1>
             <p className="text-xs text-slate-400 mt-1">Real-time traffic and visitor location insights.</p>
@@ -182,13 +182,13 @@ export default function StatsPage({ navigate }) {
                 setStats(null);
                 setPassword('');
               }}
-              className="px-4 py-2 bg-[#31255a]/60 hover:bg-[#54416d]/60 border border-[#54416d]/80 text-xs rounded-none font-medium transition-colors cursor-pointer text-rose-400 hover:text-rose-300"
+              className="px-4 py-2 bg-[#5e6572]/20 hover:bg-[#5e6572]/40 border border-[#5e6572]/80 text-xs rounded-none font-medium transition-colors cursor-pointer text-rose-400 hover:text-rose-300"
             >
               Logout
             </button>
             <button 
               onClick={() => navigate('/')}
-              className="px-4 py-2 bg-[#8fe0ff] hover:bg-[#75b4e3] text-[#2b235a] text-xs rounded-none font-semibold transition-colors cursor-pointer flex items-center gap-1 shadow-lg shadow-[#8fe0ff]/15"
+              className="px-4 py-2 bg-[#a9b4c2] hover:bg-[#7d98a1] text-[#1c2321] text-xs rounded-none font-semibold transition-colors cursor-pointer flex items-center gap-1 shadow-lg shadow-[#a9b4c2]/15"
             >
               ← Weather
             </button>
@@ -197,21 +197,21 @@ export default function StatsPage({ navigate }) {
 
         {/* KPI Scorecards */}
         <section className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-          <div className="bg-[#31255a]/40 border border-[#54416d]/80 p-5 rounded-none backdrop-blur-md">
+          <div className="bg-[#5e6572]/20 border border-[#5e6572]/80 p-5 rounded-none backdrop-blur-md">
             <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">Total Visitors</div>
             <div className="text-3xl font-bold text-white mt-2 flex items-baseline gap-2">
               {totalVisitsCount}
-              <span className="text-xs font-normal text-[#8fe0ff]">active logs</span>
+              <span className="text-xs font-normal text-[#a9b4c2]">active logs</span>
             </div>
           </div>
-          <div className="bg-[#31255a]/40 border border-[#54416d]/80 p-5 rounded-none backdrop-blur-md">
+          <div className="bg-[#5e6572]/20 border border-[#5e6572]/80 p-5 rounded-none backdrop-blur-md">
             <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">Unique Locations</div>
             <div className="text-3xl font-bold text-white mt-2 flex items-baseline gap-2">
               {uniqueCitiesCount}
-              <span className="text-xs font-normal text-[#8fe0ff]">cities</span>
+              <span className="text-xs font-normal text-[#a9b4c2]">cities</span>
             </div>
           </div>
-          <div className="bg-[#31255a]/40 border border-[#54416d]/80 p-5 rounded-none backdrop-blur-md">
+          <div className="bg-[#5e6572]/20 border border-[#5e6572]/80 p-5 rounded-none backdrop-blur-md">
             <div className="text-xs text-slate-400 font-medium uppercase tracking-wider">Top Location</div>
             <div className="text-3xl font-bold text-white mt-2 truncate pr-2" title={topCityName}>
               {topCityName}
@@ -222,9 +222,9 @@ export default function StatsPage({ navigate }) {
         {/* Charts & Maps Layout */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Traffic Line Chart */}
-          <div className="lg:col-span-5 bg-[#31255a]/40 border border-[#54416d]/80 p-6 rounded-none flex flex-col backdrop-blur-md h-[400px]">
-            <h2 className="text-sm font-semibold text-white uppercase tracking-wider mb-6 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#8fe0ff]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="lg:col-span-5 bg-[#5e6572]/20 border border-[#5e6572]/80 p-6 rounded-none flex flex-col backdrop-blur-md h-[400px]">
+            <h2 className="text-sm font-semibold text-[#eef1ef] uppercase tracking-wider mb-6 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#a9b4c2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 12l3-3 3 3 4-4M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
               </svg>
               7-Day Traffic Overview
@@ -232,20 +232,20 @@ export default function StatsPage({ navigate }) {
             <div className="flex-1 w-full text-xs">
               <ResponsiveContainer width="100%" height="100%">
                 <LineChart data={getCleanedChartData()} margin={{ top: 5, right: 5, left: -20, bottom: 5 }}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#54416d" strokeOpacity={0.3} vertical={false} />
-                  <XAxis dataKey="date" stroke="#75b4e3" axisLine={false} tickLine={false} />
-                  <YAxis stroke="#75b4e3" axisLine={false} tickLine={false} allowDecimals={false} />
+                  <CartesianGrid strokeDasharray="3 3" stroke="#5e6572" strokeOpacity={0.3} vertical={false} />
+                  <XAxis dataKey="date" stroke="#7d98a1" axisLine={false} tickLine={false} />
+                  <YAxis stroke="#7d98a1" axisLine={false} tickLine={false} allowDecimals={false} />
                   <Tooltip 
-                    contentStyle={{ backgroundColor: '#31255a', borderColor: '#54416d', borderRadius: '0px' }}
-                    labelStyle={{ color: '#f8fafc', fontWeight: 'bold' }}
-                    itemStyle={{ color: '#8fe0ff' }}
+                    contentStyle={{ backgroundColor: '#1c2321', borderColor: '#5e6572', borderRadius: '0px' }}
+                    labelStyle={{ color: '#eef1ef', fontWeight: 'bold' }}
+                    itemStyle={{ color: '#a9b4c2' }}
                   />
                   <Line 
                     type="monotone" 
                     dataKey="Visitors" 
-                    stroke="#8fe0ff" 
+                    stroke="#a9b4c2" 
                     strokeWidth={3} 
-                    dot={{ fill: '#75b4e3', strokeWidth: 2, r: 4 }} 
+                    dot={{ fill: '#7d98a1', strokeWidth: 2, r: 4 }} 
                     activeDot={{ r: 6 }} 
                   />
                 </LineChart>
@@ -254,15 +254,15 @@ export default function StatsPage({ navigate }) {
           </div>
 
           {/* Leaflet Map */}
-          <div className="lg:col-span-7 bg-[#31255a]/40 border border-[#54416d]/80 p-4 rounded-none backdrop-blur-md h-[400px] flex flex-col relative overflow-hidden">
-            <h2 className="text-sm font-semibold text-white uppercase tracking-wider mb-4 px-2 flex items-center gap-2">
-              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#8fe0ff]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+          <div className="lg:col-span-7 bg-[#5e6572]/20 border border-[#5e6572]/80 p-4 rounded-none backdrop-blur-md h-[400px] flex flex-col relative overflow-hidden">
+            <h2 className="text-sm font-semibold text-[#eef1ef] uppercase tracking-wider mb-4 px-2 flex items-center gap-2">
+              <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#a9b4c2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
               </svg>
               Visitor Map
             </h2>
-            <div className="flex-1 rounded-none overflow-hidden border border-[#54416d] z-10">
+            <div className="flex-1 rounded-none overflow-hidden border border-[#5e6572] z-10">
               <MapContainer 
                 center={[20, 0]} 
                 zoom={1.5} 
@@ -295,17 +295,17 @@ export default function StatsPage({ navigate }) {
         </section>
 
         {/* Telemetry Table */}
-        <section className="bg-[#31255a]/40 border border-[#54416d]/80 rounded-none p-6 backdrop-blur-md">
-          <h2 className="text-sm font-semibold text-white uppercase tracking-wider mb-6 flex items-center gap-2">
-            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#8fe0ff]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+        <section className="bg-[#5e6572]/20 border border-[#5e6572]/80 rounded-none p-6 backdrop-blur-md">
+          <h2 className="text-sm font-semibold text-[#eef1ef] uppercase tracking-wider mb-6 flex items-center gap-2">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-[#a9b4c2]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 10h16M4 14h16M4 18h16" />
             </svg>
             Last 100 Visitor Details
           </h2>
-          <div className="overflow-x-auto rounded-none border border-[#54416d]/60">
+          <div className="overflow-x-auto rounded-none border border-[#5e6572]/60">
             <table className="w-full text-left border-collapse text-xs">
               <thead>
-                <tr className="bg-[#2b235a]/80 text-slate-300 font-medium border-b border-[#54416d]/60">
+                <tr className="bg-[#1c2321]/80 text-slate-300 font-medium border-b border-[#5e6572]/60">
                   <th className="py-4 px-5">ID</th>
                   <th className="py-4 px-5">IP Address</th>
                   <th className="py-4 px-5">Location</th>
@@ -313,12 +313,12 @@ export default function StatsPage({ navigate }) {
                   <th className="py-4 px-5">Visit Date</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-[#54416d]/40 bg-[#31255a]/10">
+              <tbody className="divide-y divide-[#5e6572]/40 bg-[#5e6572]/10">
                 {stats?.visits && stats.visits.length > 0 ? (
                   stats.visits.map((visit) => (
-                    <tr key={visit.id} className="hover:bg-[#54416d]/30 transition-colors duration-200">
+                    <tr key={visit.id} className="hover:bg-[#5e6572]/30 transition-colors duration-200">
                       <td className="py-4 px-5 text-slate-400 font-mono">#{visit.id}</td>
-                      <td className="py-4 px-5 font-mono text-[#8fe0ff]/95">{visit.ip}</td>
+                      <td className="py-4 px-5 font-mono text-[#a9b4c2]/95">{visit.ip}</td>
                       <td className="py-4 px-5 text-white font-medium">
                         {visit.city_name || visit.city || 'Unknown'}
                         {(visit.country) && <span className="text-[10px] text-slate-400 font-normal block mt-0.5">{visit.country}</span>}
