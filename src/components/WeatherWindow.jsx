@@ -1,54 +1,22 @@
-import { useMemo, useState, useRef, useEffect, useCallback } from 'react';
+import { useMemo, useEffect } from 'react';
 import InsightCard from './InsightCard';
 import MetricCard from './MetricCard';
 import {
   Droplets,
   Wind,
-  Sun,
-  Cloud,
-  CloudRain,
-  Snowflake,
-  CloudLightning,
-  CloudFog,
-  CloudDrizzle,
 } from 'lucide-react';
-import { generateInsights, getSystemTheme } from '../utils/weatherLogic';
+import {
+  generateInsights,
+  getSystemTheme,
+  getWeatherIcon,
+  getHeaderDateLabel,
+} from '../utils/weatherLogic';
+import usePointerSlider from '../hooks/usePointerSlider';
 
 // ── Module-level constants & pure helpers ─────────────────────────────────────
 
-const TOTAL_HOURS = 24;
 // Card width (62px) + gap (8px) = 70px per slot.
-// Used to compute which card is centered in the snap-slider.
 const CARD_SLOT_W = 70;
-
-/** Maps a WMO weather code to its Lucide icon component. */
-function getWeatherIcon(code) {
-  if (code === 0) return Sun;
-  if ([1, 2, 3].includes(code)) return Cloud;
-  if ([45, 48].includes(code)) return CloudFog;
-  if ([51, 53, 55].includes(code)) return CloudDrizzle;
-  if ([61, 63, 65, 80, 81, 82].includes(code)) return CloudRain;
-  if ([71, 73, 75, 77, 85, 86].includes(code)) return Snowflake;
-  if ([95, 96, 99].includes(code)) return CloudLightning;
-  return Cloud;
-}
-
-/**
- * Returns a human-readable date label for a card header.
- * Pure function — defined at module level to avoid re-creation on every render.
- */
-function getHeaderDateLabel(dateString) {
-  const dateObj  = new Date(dateString + 'T00:00:00');
-  const today    = new Date();
-  const tomorrow = new Date();
-  tomorrow.setDate(today.getDate() + 1);
-
-  if (dateObj.toDateString() === today.toDateString())    return 'TODAY';
-  if (dateObj.toDateString() === tomorrow.toDateString()) return 'TOMORROW';
-  return dateObj
-    .toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
-    .toUpperCase();
-}
 
 /**
  * Shared event handler props that stop touch/mouse/wheel propagation,
@@ -78,6 +46,8 @@ const STOP_PROPAGATION = {
  *  weatherData   {object}  – Parent-provided weather data.
  *  loadingData   {boolean} – Parent-provided loading state.
  *  errorData     {string}  – Parent-provided error state.
+ *  onSliderInteract  {function} - Callback when the slider drag starts/ends
+ *  onHourChange  {function} - Callback when active card's hour changes
  */
 export default function WeatherWindow({
   title,
@@ -87,8 +57,8 @@ export default function WeatherWindow({
   weatherData   = null,
   loadingData   = false,
   errorData     = null,
-  onSliderInteract,  // (locked: boolean) => void
-  onHourChange,      // (hour: 0-23) => void — called by active card on every hour change
+  onSliderInteract,
+  onHourChange,
 }) {
 
   // ── Derived values ────────────────────────────────────────────────────────────
@@ -98,22 +68,15 @@ export default function WeatherWindow({
 
   const displayName = title || weatherData?.locationName || '';
 
-  const insights = useMemo(
-    () => generateInsights(weatherData),
-    [weatherData]
-  );
-
   // ── Hourly data ───────────────────────────────────────────────────────────────
-  //
-  // Active tab  (today's card) → reorder so current hour is first in the slider.
-  // Inactive tabs              → always start from 00:00 (no reorder).
-  //
   const sortedHourly = useMemo(() => {
     if (!weatherData?.hourly) return [];
 
-    const times = weatherData.hourly.time           || [];
-    const temps = weatherData.hourly.temperature_2m || [];
-    const codes = weatherData.hourly.weather_code   || [];
+    const times     = weatherData.hourly.time                 || [];
+    const temps     = weatherData.hourly.temperature_2m       || [];
+    const codes     = weatherData.hourly.weather_code         || [];
+    const humidity  = weatherData.hourly.relative_humidity_2m || [];
+    const windSpeed = weatherData.hourly.wind_speed_10m       || [];
 
     // Collect all 24 hours that belong to this card's date (always 00:00 → 23:00).
     const dayHours = [];
@@ -123,6 +86,8 @@ export default function WeatherWindow({
           time:        times[i].split('T')[1], // "HH:MM"
           temp:        temps[i],
           weatherCode: codes[i],
+          humidity:    humidity[i],
+          windSpeed:   windSpeed[i],
         });
       }
     }
@@ -130,127 +95,20 @@ export default function WeatherWindow({
     return dayHours;
   }, [weatherData, dateStr]);
 
-  // ── Transform-based hourly slider ──────────────────────────────────────────
-  //
-  // Uses translateX on a track div — NOT overflow-x:scroll — so there is
-  // no browser snap fighting with our drag.  During drag, the transform is
-  // written directly to the DOM (zero React re-renders).  On pointer-up we
-  // calculate a momentum-based landing card and animate with a CSS transition.
-  //
-  const [selectedHourIndex,  setSelectedHourIndex]  = useState(0);
-  const sliderContainerRef = useRef(null); // overflow:hidden clip div
-  const sliderTrackRef     = useRef(null); // moving flex row
-  const sliderOffsetRef    = useRef(0);    // current translateX (px)
-  const dragState          = useRef({ active: false, startX: 0, baseOffset: 0 });
-  const velocityState      = useRef({ lastX: 0, lastTime: 0, value: 0 });
-
-  /** translateX so card `idx` sits at the horizontal centre of the container. */
-  const offsetForIdx = useCallback((idx) => {
-    const w = sliderContainerRef.current?.clientWidth ?? 0;
-    return w / 2 - idx * CARD_SLOT_W - CARD_SLOT_W / 2;
-  }, []);
-
-  /** Write translateX to the track — optionally with a smooth transition. */
-  const applyTrackOffset = useCallback((offset, animated) => {
-    const el = sliderTrackRef.current;
-    if (!el) return;
-    el.style.transition = animated
-      ? 'transform 320ms cubic-bezier(0.25, 1, 0.5, 1)'
-      : 'none';
-    el.style.transform = `translateX(${offset}px)`;
-  }, []);
-
-  /**
-   * Snap to nearest card after pointer-up, factoring in release velocity.
-   * ~150 ms of momentum is extrapolated so a fast flick feels natural.
-   */
-  const snapToNearest = useCallback((currentOff, velPxPerMs) => {
-    const container = sliderContainerRef.current;
-    const count     = sortedHourly.length;
-    if (!container || !count) return;
-
-    const center        = container.clientWidth / 2;
-    const predictedOff  = currentOff + velPxPerMs * 150;
-    const centerInTrack = center - predictedOff;
-    const raw           = (centerInTrack - CARD_SLOT_W / 2) / CARD_SLOT_W;
-    const idx           = Math.max(0, Math.min(Math.round(raw), count - 1));
-    const targetOff     = offsetForIdx(idx);
-    sliderOffsetRef.current = targetOff;
-    applyTrackOffset(targetOff, true);
-    setSelectedHourIndex(idx);
-  }, [sortedHourly.length, offsetForIdx, applyTrackOffset]);
-
-  // Initialise slider position when data loads or active/date changes.
-  useEffect(() => {
-    const n        = new Date();
-    const todayStr = `${n.getFullYear()}-${String(n.getMonth() + 1).padStart(2, '0')}-${String(n.getDate()).padStart(2, '0')}`;
-    const isToday  = dateStr === todayStr;
-    const target   = (isToday && active) ? n.getHours() : 0;
-    setSelectedHourIndex(target);
-    // rAF: container must be painted so clientWidth is available.
-    requestAnimationFrame(() => {
-      const offset = offsetForIdx(target);
-      sliderOffsetRef.current = offset;
-      applyTrackOffset(offset, false);
-    });
-  }, [weatherData, active, dateStr, offsetForIdx, applyTrackOffset]);
-
-  // ── Pointer handlers (mouse + touch, via Pointer Events API) ──────────────
-  // setPointerCapture routes all future events here until pointerup,
-  // preventing CylinderTimeline from ever seeing them.
-  const handleSliderPointerDown = useCallback((e) => {
-    e.stopPropagation();
-    onSliderInteract?.(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
-    dragState.current     = { active: true, startX: e.clientX, baseOffset: sliderOffsetRef.current };
-    velocityState.current = { lastX: e.clientX, lastTime: Date.now(), value: 0 };
-  }, [onSliderInteract]);
-
-  const handleSliderPointerMove = useCallback((e) => {
-    e.stopPropagation();
-    if (!dragState.current.active) return;
-
-    // Velocity tracking
-    const now = Date.now();
-    const dt  = now - velocityState.current.lastTime;
-    if (dt > 0) velocityState.current.value = (e.clientX - velocityState.current.lastX) / dt;
-    velocityState.current.lastX    = e.clientX;
-    velocityState.current.lastTime = now;
-
-    // Move the track
-    const dx  = e.clientX - dragState.current.startX;
-    const off = dragState.current.baseOffset + dx;
-    sliderOffsetRef.current = off;
-    applyTrackOffset(off, false);
-
-    // Update highlight index during drag for visual feedback
-    const container = sliderContainerRef.current;
-    if (container) {
-      const center = container.clientWidth / 2;
-      const raw    = (center - off - CARD_SLOT_W / 2) / CARD_SLOT_W;
-      const idx    = Math.max(0, Math.min(Math.round(raw), sortedHourly.length - 1));
-      setSelectedHourIndex(idx);
-    }
-  }, [applyTrackOffset, sortedHourly.length]);
-
-  const handleSliderPointerUp = useCallback((e) => {
-    e.stopPropagation();
-    if (!dragState.current.active) return;
-    dragState.current.active = false;
-    onSliderInteract?.(false);
-    snapToNearest(sliderOffsetRef.current, velocityState.current.value);
-  }, [onSliderInteract, snapToNearest]);
-  /**
-   * Time-based darkness overlay opacity.
-   * Reactive to selectedHourIndex so dragging the slider visibly brightens/dims the card.
-   * Falls back to the real clock hour when data isn't loaded yet (selectedHourIndex = 0).
-   *
-   * Formula: 0.2 at noon (hour 12) → 0.8 at midnight (hour 0 or 23)
-   */
-  const darkness = useMemo(() => {
-    const hour = (sortedHourly.length > 0) ? selectedHourIndex : new Date().getHours();
-    return 0.2 + (Math.abs(hour - 12) / 12) * 0.6;
-  }, [selectedHourIndex, sortedHourly.length]);
+  // ── Transform-based hourly slider custom hook ──────────────────────────────
+  const {
+    selectedHourIndex,
+    sliderContainerRef,
+    sliderTrackRef,
+    darkness,
+    pointerHandlers,
+  } = usePointerSlider({
+    sortedHourlyLength: sortedHourly.length,
+    active,
+    dateStr,
+    onSliderInteract,
+    cardSlotWidth: CARD_SLOT_W,
+  });
 
   // Notify parent (CylinderTimeline) whenever the active card's hour changes,
   // so the page-level background overlay can sync without a full React re-render.
@@ -258,17 +116,35 @@ export default function WeatherWindow({
     if (active) onHourChange?.(selectedHourIndex);
   }, [active, selectedHourIndex, onHourChange]);
 
-
   // The data for whichever hour-card is currently snapped to center.
   const selectedHourData = sortedHourly[selectedHourIndex] ?? null;
 
+  // Insights: always reflect the selected hour's conditions.
+  const insights = useMemo(() => {
+    if (!weatherData) return [];
+    return generateInsights(
+      selectedHourData
+        ? {
+            ...weatherData,
+            temp:        selectedHourData.temp,
+            weatherCode: selectedHourData.weatherCode,
+            humidity:    selectedHourData.humidity    ?? weatherData.humidity,
+            windSpeed:   selectedHourData.windSpeed   ?? weatherData.windSpeed,
+          }
+        : weatherData
+    );
+  }, [weatherData, selectedHourData]);
+
   // ── Derived display values (reflect selected hour) ────────────────────────────
-  const displayTemp    = selectedHourData
+  const displayTemp = selectedHourData
     ? Math.round(selectedHourData.temp)
     : weatherData ? Math.round(weatherData.temp) : '--';
 
-  const displayCode    = selectedHourData?.weatherCode ?? weatherData?.weatherCode ?? 0;
-  const WeatherIcon    = getWeatherIcon(displayCode);
+  const displayHumidity = selectedHourData?.humidity  ?? weatherData?.humidity;
+  const displayWind     = selectedHourData?.windSpeed ?? weatherData?.windSpeed;
+
+  const displayCode  = selectedHourData?.weatherCode ?? weatherData?.weatherCode ?? 0;
+  const WeatherIcon  = getWeatherIcon(displayCode);
 
   // ── Card visibility class ─────────────────────────────────────────────────────
   const cardClass = active
@@ -369,17 +245,13 @@ export default function WeatherWindow({
 
                 {/*
                   Clip container: overflow:hidden hides off-screen cards.
-                  The inner track is translated with CSS transform — no scrollLeft
-                  manipulation, no scroll-snap fighting, pure GPU compositing.
+                  The inner track is translated with CSS transform via pointerHandlers.
                 */}
                 <div
-                  ref={sliderContainerRef}
                   className="overflow-hidden py-2 cursor-grab active:cursor-grabbing"
                   style={{ touchAction: 'none', userSelect: 'none' }}
-                  onPointerDown={handleSliderPointerDown}
-                  onPointerMove={handleSliderPointerMove}
-                  onPointerUp={handleSliderPointerUp}
-                  onPointerCancel={handleSliderPointerUp}
+                  ref={sliderContainerRef}
+                  {...pointerHandlers}
                   onWheel={(e) => e.stopPropagation()}
                 >
                   <div
@@ -424,8 +296,8 @@ export default function WeatherWindow({
             {/* ─ Metric Cards — at 80% vertical ─ */}
             <div className="absolute top-[80%] inset-x-4">
               <div className="grid grid-cols-2 gap-2 opacity-90">
-                <MetricCard Icon={Droplets} label="Humidity" value={weatherData.humidity}  unit="%" />
-                <MetricCard Icon={Wind}     label="Wind"     value={weatherData.windSpeed} unit="km/h" />
+                <MetricCard Icon={Droplets} label="Humidity" value={displayHumidity} unit="%" />
+                <MetricCard Icon={Wind}     label="Wind"     value={displayWind != null ? Math.round(displayWind) : undefined} unit="km/h" />
               </div>
             </div>
           </>

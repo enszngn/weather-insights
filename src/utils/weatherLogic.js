@@ -1,3 +1,13 @@
+import {
+  Sun,
+  Cloud,
+  CloudFog,
+  CloudDrizzle,
+  CloudRain,
+  Snowflake,
+  CloudLightning,
+} from 'lucide-react';
+
 /**
  * Processes weather metrics and returns contextual insights.
  * @param {Object} data - The weather data object from our hook.
@@ -39,4 +49,32 @@ export function generateInsights(data) {
   }
 
   return insights;
+}
+
+/** Maps a WMO weather code to its Lucide icon component. */
+export function getWeatherIcon(code) {
+  if (code === 0) return Sun;
+  if ([1, 2, 3].includes(code)) return Cloud;
+  if ([45, 48].includes(code)) return CloudFog;
+  if ([51, 53, 55].includes(code)) return CloudDrizzle;
+  if ([61, 63, 65, 80, 81, 82].includes(code)) return CloudRain;
+  if ([71, 73, 75, 77, 85, 86].includes(code)) return Snowflake;
+  if ([95, 96, 99].includes(code)) return CloudLightning;
+  return Cloud;
+}
+
+/**
+ * Returns a human-readable date label for a card header.
+ */
+export function getHeaderDateLabel(dateString) {
+  const dateObj  = new Date(dateString + 'T00:00:00');
+  const today    = new Date();
+  const tomorrow = new Date();
+  tomorrow.setDate(today.getDate() + 1);
+
+  if (dateObj.toDateString() === today.toDateString())    return 'TODAY';
+  if (dateObj.toDateString() === tomorrow.toDateString()) return 'TOMORROW';
+  return dateObj
+    .toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })
+    .toUpperCase();
 }

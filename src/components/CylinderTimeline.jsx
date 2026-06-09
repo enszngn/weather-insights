@@ -1,8 +1,9 @@
-import { useState, useEffect, useRef, useMemo, useCallback, useLayoutEffect } from 'react';
+import { useEffect, useRef, useCallback, useLayoutEffect } from 'react';
 import WeatherWindow from './WeatherWindow';
 import CitySearch from './CitySearch';
 import { getSystemTheme } from '../utils/weatherLogic';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
+import useWeatherForecast from '../hooks/useWeatherForecast';
 
 // ── Module-level constants ────────────────────────────────────────────────────
 
@@ -13,77 +14,23 @@ const THRESHOLD_DEGREES    = 12;               // min drag to commit a slide
 const WHEEL_THROTTLE_MS    = 800;              // ms between wheel-triggered slides
 const CYLINDER_TRANSITION  = 'transform 700ms cubic-bezier(0.25, 1, 0.5, 1)';
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-/** Returns today + next N days as YYYY-MM-DD strings (local timezone, not UTC). */
-function buildDays(count) {
-  return Array.from({ length: count }, (_, i) => {
-    const d = new Date();
-    d.setDate(d.getDate() + i);
-    const year  = d.getFullYear();
-    const month = String(d.getMonth() + 1).padStart(2, '0');
-    const day   = String(d.getDate()).padStart(2, '0');
-    return `${year}-${month}-${day}`;
-  });
-}
-
-/** Builds a normalised weather object from an Open-Meteo forecast API response. */
-function normaliseMeteoData(data, dateStr, isToday, fallbackTitle) {
-  const currentHour = new Date().getHours();
-  return {
-    temp:         isToday && data.current ? data.current.temperature_2m          : data.hourly.temperature_2m[currentHour],
-    humidity:     isToday && data.current ? data.current.relative_humidity_2m    : (data.hourly.relative_humidity_2m?.[currentHour] ?? 50),
-    windSpeed:    isToday && data.current ? data.current.wind_speed_10m           : (data.hourly.wind_speed_10m?.[currentHour] ?? 10),
-    uvIndex:      data.daily.uv_index_max[0],
-    weatherCode:  isToday && data.current ? data.current.weather_code            : data.hourly.weather_code[currentHour],
-    hourly:       data.hourly,
-    locationName: fallbackTitle || data.timezone.split('/').pop().replace(/_/g, ' '),
-    lat:          data.latitude,
-    lon:          data.longitude,
-  };
-}
-
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export default function CylinderTimeline({ initialWeather }) {
-  // ── Location & active day state ──────────────────────────────────────────────
-  const [coords, setCoords] = useState({
-    lat:   initialWeather?.lat          ?? 41.0082,
-    lon:   initialWeather?.lon          ?? 28.9784,
-    title: initialWeather?.locationName ?? 'Istanbul',
-  });
-
-  const [activeIndex, setActiveIndex] = useState(0);
-
-  // ── Day strings — memoized so array identity is stable across renders ─────────
-  const days = useMemo(() => buildDays(TOTAL_DAYS), []);
-
-  // ── Per-day weather cache — keyed by dateStr ──────────────────────────────────
-  const [loadedData, setLoadedData] = useState(() => {
-    if (!initialWeather) return {};
-    return { [days[0]]: { loading: false, error: null, data: initialWeather } };
-  });
-
-  const activeFetches = useRef(new Set());
+  // ── Weather Forecast custom hook ───────────────────────────────────────────
+  const {
+    coords,
+    activeIndex,
+    setActiveIndex,
+    days,
+    loadedData,
+    selectCity,
+  } = useWeatherForecast(initialWeather);
 
   // ── Cumulative rotation (fixes wrap-around bug) ───────────────────────────────
-  //
-  // Problem with the old approach: rotateY = activeIndex * -45°
-  //   → jumping from index 7 back to 0 meant CSS went from -315° → 0°,
-  //     which is a +315° rotation (7 steps backward) instead of -45° (1 step forward).
-  //
-  // Fix: accumulate rotations indefinitely. Never wrap/mod the CSS angle.
-  //   e.g. 0 → -45 → -90 → ... → -315 → -360 (not 0!) → -405 ...
-  //   The cylinder math still works because faces are periodic at 360°.
-  //
   const cumulativeRotation = useRef(0); // total CSS degrees; grows without bound
 
   // ── DOM refs — transform written directly, bypassing React (FPS fix) ──────────
-  //
-  // dragOffset was previously useState → setDragOffset on every mousemove
-  // triggered a full React re-render of all 8 cards (~60×/s = janky).
-  // Now: we write directly to style.transform via cylinderRef — zero React renders.
-  //
   const cylinderRef   = useRef(null); // ref to the rotating wrapper div
   const dragOffsetRef = useRef(0);    // current drag angle (degrees)
   const isDragging    = useRef(false);
@@ -107,15 +54,10 @@ export default function CylinderTimeline({ initialWeather }) {
 
   /**
    * Locked while the user is interacting with the hourly slider inside a card.
-   * All cylinder gesture handlers bail out immediately when this is true,
-   * preventing accidental day-change during hour-scroll.
-   * Declared AFTER applyTransform to avoid TDZ (Temporal Dead Zone) errors
-   * in the production bundle.
    */
   const sliderLocked = useRef(false);
   const lockCylinder = useCallback((locked) => {
     sliderLocked.current = locked;
-    // Safety: release any in-progress cylinder drag when slider takes over.
     if (locked && isDragging.current) {
       isDragging.current = false;
       dragOffsetRef.current = 0;
@@ -125,18 +67,16 @@ export default function CylinderTimeline({ initialWeather }) {
 
   /**
    * Navigate by a signed delta (e.g. +1 = next day, -1 = previous day).
-   * Accumulates rotation so the cylinder always turns the short way.
    */
   const navigateBy = useCallback((delta) => {
     cumulativeRotation.current -= delta * ROTATION_PER_CARD;
     dragOffsetRef.current = 0;
     setActiveIndex((prev) => ((prev + delta) % TOTAL_DAYS + TOTAL_DAYS) % TOTAL_DAYS);
     applyTransform(true);
-  }, [applyTransform]);
+  }, [applyTransform, setActiveIndex]);
 
   /**
    * Navigate to a specific index via the shortest arc (for tab/dot clicks).
-   * Picks −1 step rather than +7 when applicable.
    */
   const navigateTo = useCallback((targetIndex) => {
     const currentIndex =
@@ -148,11 +88,10 @@ export default function CylinderTimeline({ initialWeather }) {
     dragOffsetRef.current = 0;
     setActiveIndex(targetIndex);
     applyTransform(true);
-  }, [applyTransform]);
+  }, [applyTransform, setActiveIndex]);
 
   /**
    * Commits the current drag to a navigation step or snaps back.
-   * Shared by mouse and touch end handlers.
    */
   const commitDrag = useCallback(() => {
     const offset = dragOffsetRef.current;
@@ -168,73 +107,6 @@ export default function CylinderTimeline({ initialWeather }) {
       applyTransform(true); // below threshold → snap back
     }
   }, [navigateBy, applyTransform]);
-
-  // ── Fetch weather for a specific day ─────────────────────────────────────────
-  const fetchDataForDate = useCallback(async (dateStr, lat, lon) => {
-    const fetchKey = `${dateStr}-${lat}-${lon}`;
-    if (activeFetches.current.has(fetchKey)) return;
-    activeFetches.current.add(fetchKey);
-
-    setLoadedData((prev) => ({
-      ...prev,
-      [dateStr]: { loading: true, error: null, data: null },
-    }));
-
-    try {
-      const url = [
-        'https://api.open-meteo.com/v1/forecast',
-        `?latitude=${lat}&longitude=${lon}`,
-        '&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code',
-        '&hourly=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code',
-        '&daily=uv_index_max&timezone=auto',
-        `&start_date=${dateStr}&end_date=${dateStr}`,
-      ].join('');
-
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      const data = await res.json();
-
-      const isToday = dateStr === days[0];
-
-      setLoadedData((prev) => {
-        // Discard stale responses if the user switched city mid-flight.
-        if (prev[dateStr]?.loading === false && prev[dateStr]?.data) return prev;
-        return {
-          ...prev,
-          [dateStr]: {
-            loading: false,
-            error:   null,
-            data:    normaliseMeteoData(data, dateStr, isToday, coords.title),
-          },
-        };
-      });
-    } catch (err) {
-      console.error(`Fetch failed for date ${dateStr}:`, err);
-      setLoadedData((prev) => ({
-        ...prev,
-        [dateStr]: { loading: false, error: 'Failed to load weather data', data: null },
-      }));
-    } finally {
-      activeFetches.current.delete(fetchKey);
-    }
-  }, [days, coords.title]);
-
-  // ── Prefetch active + ±2 neighbour days on index/coord change ────────────────
-  useEffect(() => {
-    const neighbors = [
-      activeIndex,
-      (activeIndex - 1 + TOTAL_DAYS) % TOTAL_DAYS,
-      (activeIndex + 1) % TOTAL_DAYS,
-      (activeIndex - 2 + TOTAL_DAYS) % TOTAL_DAYS,
-      (activeIndex + 2) % TOTAL_DAYS,
-    ];
-    neighbors.forEach((idx) => {
-      const dateStr = days[idx];
-      if (!loadedData[dateStr] || loadedData[dateStr].error) {
-        fetchDataForDate(dateStr, coords.lat, coords.lon);
-      }
-    });
-  }, [activeIndex, coords, days, fetchDataForDate, loadedData]);
 
   // ── Touch handlers ────────────────────────────────────────────────────────────
   const handleTouchStart = useCallback((e) => {
@@ -293,10 +165,9 @@ export default function CylinderTimeline({ initialWeather }) {
 
   // ── City selection ─────────────────────────────────────────────────────────────
   const handleSelectCity = useCallback((newCity) => {
-    setCoords({ lat: newCity.lat, lon: newCity.lon, title: newCity.name });
-    setLoadedData({});  // clear old city's cache
-    navigateTo(0);       // reset to Today
-  }, [navigateTo]);
+    selectCity(newCity);
+    navigateTo(0); // reset visual rotation to Today
+  }, [selectCity, navigateTo]);
 
   // ── Dynamic page background ─────────────────────────────────────────────────────
   const activeWeather = loadedData[days[activeIndex]]?.data;
@@ -308,7 +179,6 @@ export default function CylinderTimeline({ initialWeather }) {
    * Page-level darkness overlay.
    * Updates via direct DOM mutation (bgDarknessRef) so the active card's slider
    * can drive the page brightness without triggering a React re-render chain.
-   * Formula: 0.1 (noon) → 0.55 (midnight) — softer than the card overlay.
    */
   const bgDarknessRef = useRef(null);
   const handleCardHourChange = useCallback((hour) => {
@@ -316,6 +186,7 @@ export default function CylinderTimeline({ initialWeather }) {
     const opacity = 0.1 + (Math.abs(hour - 12) / 12) * 0.45;
     bgDarknessRef.current.style.opacity = String(opacity);
   }, []);
+
   // Initial page darkness from current clock time.
   const initialPageDarkness = (() => {
     const h = new Date().getHours();
@@ -334,9 +205,7 @@ export default function CylinderTimeline({ initialWeather }) {
       onMouseLeave={handleMouseLeave}
       onWheel={handleWheel}
     >
-      {/* ─ Page-level time-based darkness overlay ─
-          Opacity driven by the active card's selected hour via handleCardHourChange.
-          transition-[opacity] 1s so colour shifts feel cinematic, not abrupt. */}
+      {/* ─ Page-level time-based darkness overlay ─ */}
       <div
         ref={bgDarknessRef}
         className="absolute inset-0 bg-black pointer-events-none z-0"
@@ -380,15 +249,12 @@ export default function CylinderTimeline({ initialWeather }) {
 
         {/*
           Carousel Wheel.
-          transform is controlled entirely via cylinderRef (DOM mutation),
-          NOT via a React style prop. This gives zero React re-renders during drag.
-          useLayoutEffect sets the initial transform before first paint.
+          transform is controlled entirely via cylinderRef (DOM mutation).
         */}
         <div
           ref={cylinderRef}
           className="preserve-3d w-full h-[80vh] flex items-center justify-center"
           style={{
-            // Provide a safe initial value; useLayoutEffect overrides before paint.
             transform: 'translateZ(calc(var(--card-width) * -1.207)) rotateY(0deg)',
           }}
         >
