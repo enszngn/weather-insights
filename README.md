@@ -28,10 +28,15 @@ Weather Insights focuses on **fast insights**. Unlike traditional weather apps c
   <img src="./public/London.png" alt="London" width="100%" />
 </p>
 
-### 📱 Mobile UI & System Analytics
-| Mobile View | Analytics Dashboard |
+### 📱 Mobile-Tablet UI & System Analytics
+
+| Tablet View | Mobile View |
 | :---: | :---: |
-| ![Mobile Screenshot](./public/phone.png) | ![Analytics Dashboard](./public/analytics.png) |
+| ![Tablet View](./public/tablet.png) | ![Mobile View](./public/phone.png) |
+
+| Analytics Dashboard |
+| :---: |
+| ![Analytics Dashboard](./public/analytics.png) |
 
 ---
 
